@@ -15,10 +15,11 @@ import {
   type TrackingPlan,
   type WorkspacePublicConfig,
 } from "@usermaven/wizard-schemas";
+import { createTwoFilesPatch } from "diff";
 
 import { inspectProject } from "./inspector.js";
 
-const WIZARD_VERSION = "0.10.0";
+const WIZARD_VERSION = "0.11.0";
 const SDK_VERSION_RANGE = "^1.5.15";
 
 function boundedId(prefix: string, value: string): string {
@@ -167,14 +168,22 @@ function environmentDefaults(
   return { key: "USERMAVEN_PUBLIC_KEY", host: "USERMAVEN_TRACKING_HOST" };
 }
 
-function integrationTarget(
-  framework: ProjectInspection["project"]["framework"],
-): string {
+function usesSrcDirectory(inspection: ProjectInspection): boolean {
+  return inspection.evidence.some(
+    (item) =>
+      item.kind === "directory" &&
+      (item.path === "src/app" || item.path === "src/pages"),
+  );
+}
+
+function integrationTarget(inspection: ProjectInspection): string {
+  const framework = inspection.project.framework;
+  const prefix = usesSrcDirectory(inspection) ? "src/" : "";
   switch (framework) {
     case "next-app-router":
-      return "app/usermaven-client.ts";
+      return `${prefix}app/usermaven-provider.tsx`;
     case "next-pages-router":
-      return "lib/usermaven-client.ts";
+      return `${prefix}lib/usermaven-client.ts`;
     default:
       return "src/usermaven.ts";
   }
@@ -212,7 +221,7 @@ export const usermaven = key
       key,
       trackingHost,
       autocapture: false,
-      autoPageview: false,
+      autoPageview: true,
     })
   : null;
 
@@ -224,7 +233,109 @@ export function usermavenVerificationProperties() {
     ? { _usermaven_verification_id: value }
     : {};
 }
+${framework === "next-app-router" ? "\nexport function UsermavenBootstrap() {\n  return null;\n}\n" : ""}
 `;
+}
+
+function entryPoint(
+  inspection: ProjectInspection,
+  role: ProjectInspection["entry_points"][number]["role"],
+) {
+  return inspection.entry_points.find((entry) => entry.role === role);
+}
+
+function editOperation(
+  id: string,
+  summary: string,
+  path: string,
+  beforeHash: string,
+  before: string,
+  after: string,
+): SetupOperation {
+  return {
+    id,
+    type: "edit_file",
+    summary,
+    path,
+    before_hash: beforeHash,
+    unified_diff: createTwoFilesPatch(path, path, before, after, "", ""),
+    requires_approval: true,
+  };
+}
+
+async function deterministicWiringOperation(
+  root: string,
+  inspection: ProjectInspection,
+): Promise<SetupOperation | null> {
+  if (inspection.project.framework === "react-vite") {
+    const entry = entryPoint(inspection, "client_entry");
+    if (!entry)
+      throw new Error("React/Vite setup requires a src/main entry file");
+    const before = await readFile(join(root, entry.path), "utf8");
+    if (/^["']\.\/usermaven["'];?$/mu.test(before)) return null;
+    const after = `import "./usermaven";\n${before}`;
+    return editOperation(
+      "wire-usermaven-entry",
+      "Initialize Usermaven from the React/Vite entry point",
+      entry.path,
+      entry.sha256,
+      before,
+      after,
+    );
+  }
+
+  if (inspection.project.framework === "next-app-router") {
+    const entry = entryPoint(inspection, "app_layout");
+    if (!entry) throw new Error("Next.js App Router setup requires app/layout");
+    const before = await readFile(join(root, entry.path), "utf8");
+    if (before.includes("<UsermavenBootstrap")) return null;
+    const body = /<body(?:\s[^>]*)?>/u.exec(before);
+    if (!body)
+      throw new Error("Next.js root layout must contain a body element");
+    const withImport = `import { UsermavenBootstrap } from "./usermaven-provider";\n${before}`;
+    const bodyEnd =
+      body.index + body[0].length + (withImport.length - before.length);
+    const after = `${withImport.slice(0, bodyEnd)}<UsermavenBootstrap />${withImport.slice(bodyEnd)}`;
+    return editOperation(
+      "wire-usermaven-layout",
+      "Mount Usermaven from the Next.js root layout",
+      entry.path,
+      entry.sha256,
+      before,
+      after,
+    );
+  }
+
+  const prefix = usesSrcDirectory(inspection) ? "src/" : "";
+  const entry = entryPoint(inspection, "pages_app");
+  if (!entry) {
+    return {
+      id: "wire-usermaven-pages-app",
+      type: "create_file",
+      summary: "Create the Next.js Pages Router application entry",
+      path: `${prefix}pages/_app.tsx`,
+      content: `import "../lib/usermaven-client";
+
+import type { AppProps } from "next/app";
+
+export default function App({ Component, pageProps }: AppProps) {
+  return <Component {...pageProps} />;
+}
+`,
+      requires_approval: true,
+    };
+  }
+  const before = await readFile(join(root, entry.path), "utf8");
+  if (before.includes('"../lib/usermaven-client"')) return null;
+  const after = `import "../lib/usermaven-client";\n${before}`;
+  return editOperation(
+    "wire-usermaven-pages-app",
+    "Initialize Usermaven from the Next.js Pages Router application entry",
+    entry.path,
+    entry.sha256,
+    before,
+    after,
+  );
 }
 
 async function pathExists(path: string): Promise<boolean> {
@@ -258,6 +369,15 @@ export async function generateSetupPlan(
   options: GenerateSetupPlanOptions = {},
 ): Promise<SetupPlan> {
   const inspection = await inspectProject(input.projectRoot);
+  if (
+    !["next-app-router", "next-pages-router", "react-vite"].includes(
+      inspection.project.framework,
+    )
+  ) {
+    throw new Error(
+      `Unsupported framework for browser setup: ${inspection.project.framework}`,
+    );
+  }
   const trackingPlan = trackingPlanSchema.parse(input.trackingPlan);
   if (trackingPlan.proposal?.mode !== "ai_generated") {
     throw new Error("Setup generation requires an AI-generated tracking plan");
@@ -346,7 +466,7 @@ export async function generateSetupPlan(
     (occurrence) =>
       occurrence.provider === "usermaven" && occurrence.kind === "initialize",
   );
-  const target = integrationTarget(inspection.project.framework);
+  const target = integrationTarget(inspection);
 
   if (!hasSdk) {
     operations.push({
@@ -387,6 +507,9 @@ export async function generateSetupPlan(
       requires_approval: true,
     });
   }
+
+  const wiring = await deterministicWiringOperation(root, inspection);
+  if (wiring) operations.push(wiring);
 
   operations.push({
     id: "configure-public-environment",

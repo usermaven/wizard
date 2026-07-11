@@ -30,20 +30,20 @@ const mutating = (
   availability,
 });
 
-const localState = (name: string, description: string) => ({
+const localState = (name: string, description: string, agentSafe = true) => ({
   name,
   description,
   mutates_repository: false,
   mutates_local_state: true,
   requires_approval: false,
-  agent_safe: true,
+  agent_safe: agentSafe,
   availability: "implemented" as const,
 });
 
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.10.0",
+  version: "0.11.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -66,10 +66,9 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Render a saved setup plan without executing its operations.",
       "implemented",
     ),
-    mutating(
+    localState(
       "approve",
       "Interactively approve exact setup-plan operations and create an expiring artifact.",
-      "implemented",
       false,
     ),
     mutating(

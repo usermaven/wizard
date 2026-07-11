@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 import {
   chmod,
   lstat,
@@ -32,6 +32,7 @@ import {
 } from "@usermaven/wizard-schemas";
 
 import { digestSetupPlan, fingerprintRepositoryRoot } from "./approval.js";
+import { canonicalJsonDigest } from "./canonical.js";
 
 const STATE_DIRECTORY = ".usermaven/workflows";
 const MAXIMUM_ARTIFACT_BYTES = 5_000_000;
@@ -73,22 +74,8 @@ function isErrno(error: unknown, code: string): boolean {
   return (error as NodeJS.ErrnoException).code === code;
 }
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, canonicalize(item)]),
-    );
-  }
-  return value;
-}
-
 function digestJson(value: unknown): string {
-  return `sha256:${createHash("sha256")
-    .update(JSON.stringify(canonicalize(value)))
-    .digest("hex")}`;
+  return canonicalJsonDigest(value);
 }
 
 function isWithinRoot(root: string, candidate: string): boolean {

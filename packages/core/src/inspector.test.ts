@@ -22,6 +22,7 @@ describe("inspectProject", () => {
     ["react-vite", "react-vite"],
     ["next-app-router", "next-app-router"],
     ["next-pages-router", "next-pages-router"],
+    ["next-src-app-router", "next-app-router"],
   ] as const)("detects the %s fixture", async (fixture, framework) => {
     const result = await inspectProject(join(fixtures, fixture), { now });
 
@@ -32,6 +33,25 @@ describe("inspectProject", () => {
     });
     expect(result.scan.files_scanned).toBeGreaterThan(0);
     expect(result.inspected_at).toBe("2026-07-11T12:00:00.000Z");
+  });
+
+  it("returns digest-bound entry-point hints for src-directory layouts", async () => {
+    const result = await inspectProject(join(fixtures, "next-src-app-router"), {
+      now,
+    });
+
+    expect(result.evidence).toContainEqual({
+      kind: "directory",
+      path: "src/app",
+      detail: "Next.js App Router",
+    });
+    expect(result.entry_points).toEqual([
+      {
+        path: "src/app/layout.tsx",
+        role: "app_layout",
+        sha256: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+      },
+    ]);
   });
 
   it("reports normalized analytics tokens without source or values", async () => {

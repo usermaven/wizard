@@ -369,4 +369,33 @@ describe("verification", () => {
       ),
     ).rejects.toThrow("exact setup plan");
   });
+
+  it("fails public-key reference checks when optional env names are absent", async () => {
+    const root = await project();
+    const setup = setupPlanSchema.parse({
+      ...plan(),
+      workspace: {
+        ...plan().workspace,
+        key_env_var: undefined,
+        tracking_host_env_var: undefined,
+      },
+    });
+    const session = createVerificationSession(
+      { plan: setup, environment: "test" },
+      { now: () => new Date("2026-07-11T15:00:00Z") },
+    );
+    const result = await verifySetup(
+      {
+        projectRoot: root,
+        plan: setup,
+        session,
+        evidence: { session_id: session.session_id },
+      },
+      { now: () => new Date("2026-07-11T15:05:00Z") },
+    );
+
+    expect(
+      result.checks.find((check) => check.id === "public-config-references"),
+    ).toMatchObject({ outcome: "fail" });
+  });
 });

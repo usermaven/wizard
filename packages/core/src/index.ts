@@ -1,10 +1,14 @@
 export { inspectProject, type InspectProjectOptions } from "./inspector.js";
 export { previewChanges } from "./change-preview.js";
+export { canonicalJson, canonicalJsonDigest } from "./canonical.js";
 export {
   approvalConfirmation,
   createChangeApproval,
   digestSetupPlan,
   fingerprintRepositoryRoot,
+  loadChangeApproval,
+  storeChangeApproval,
+  verifyChangeApproval,
   type CreateChangeApprovalInput,
   type CreateChangeApprovalOptions,
 } from "./approval.js";

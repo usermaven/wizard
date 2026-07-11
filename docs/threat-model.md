@@ -37,7 +37,7 @@ network boundary. Output shown for human approval crosses a decision boundary.
 | Wrong-workspace writes or reads                          | Display the selected workspace and public-key fingerprint; scope OAuth/session tokens to one workspace.                       |
 | Dependency compromise                                    | Pin release tooling, publish with provenance, review lockfile changes, and minimize runtime dependencies.                     |
 | Stale-plan overwrite                                     | Record and re-check file content hashes before applying an edit.                                                              |
-| Forged, broadened, or replayed approval                  | Mint approval only after exact interactive confirmation; bind plan/root/IDs/expiry and consume it once.                       |
+| Forged, broadened, or replayed approval                  | Mint after exact interactive confirmation; authenticate in a private registry, bind plan/root/IDs/expiry, and consume once.   |
 | Partial mutation after failure                           | Snapshot bounded regular files, write atomically, roll back in reverse order, and report residual effects.                    |
 | Package lifecycle or shell injection                     | Use shell-free argument arrays, allowlist checks, and disable dependency lifecycle scripts during install.                    |
 | Token theft or replay                                    | Use short-lived, audience-bound tokens, rotation, revocation, PKCE for OAuth, and replay detection.                           |

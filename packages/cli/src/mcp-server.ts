@@ -8,6 +8,7 @@ import {
   createVerificationSession,
   generateSetupPlan,
   inspectProject,
+  loadChangeApproval,
   previewChanges,
   resumeWorkflow,
   saveWorkflowCheckpoint,
@@ -18,7 +19,6 @@ import {
   aiTrackingProposalSchema,
   applyResultSchema,
   businessContextSchema,
-  changeApprovalSchema,
   changePreviewSchema,
   projectInspectionSchema,
   relativePath,
@@ -34,7 +34,7 @@ import {
 } from "@usermaven/wizard-schemas";
 import { z } from "zod";
 
-const SERVER_VERSION = "0.10.0";
+const SERVER_VERSION = "0.11.0";
 
 const projectPathSchema = z
   .string()
@@ -347,18 +347,19 @@ export async function createWizardMcpServer(
     {
       title: "Apply approved setup operations",
       description:
-        "Apply only operations authorized by an unexpired, digest-bound approval created through the interactive local CLI. Uses atomic writes, stale checks, shell-free commands, rollback snapshots, and one-time replay records.",
+        "Apply only operations authorized by an unexpired, signed approval ID registered by the interactive local CLI. Uses atomic writes, stale checks, shell-free commands, rollback snapshots, and one-time replay records.",
       inputSchema: {
         project_path: projectPathSchema.optional(),
         setup_plan: setupPlanSchema,
-        approval: changeApprovalSchema,
+        approval_id: z.string().regex(/^approval_[a-zA-Z0-9-]{8,120}$/u),
       },
       outputSchema: applyResultSchema.shape,
       annotations: destructiveAnnotations,
     },
-    async ({ project_path, setup_plan, approval }) => {
+    async ({ project_path, setup_plan, approval_id }) => {
       try {
         const projectRoot = await resolveProjectPath(root, project_path);
+        const approval = await loadChangeApproval(projectRoot, approval_id);
         const result = await applyChanges({
           projectRoot,
           plan: setup_plan,

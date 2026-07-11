@@ -225,8 +225,8 @@ async function verifyMutation(
 
 async function scanPublicConfigReferences(
   root: string,
-  keyName: string,
-  hostName: string,
+  keyName: string | undefined,
+  hostName: string | undefined,
   trackingHost: string,
 ): Promise<{ key: boolean; host: boolean }> {
   const queue = [root];
@@ -259,8 +259,10 @@ async function scanPublicConfigReferences(
         const content = await readFile(path, "utf8");
         files += 1;
         bytes += item.size;
-        key ||= content.includes(keyName);
-        host ||= content.includes(hostName) || content.includes(trackingHost);
+        key ||= keyName !== undefined && content.includes(keyName);
+        host ||=
+          (hostName !== undefined && content.includes(hostName)) ||
+          content.includes(trackingHost);
         if (key && host) return { key, host };
       } catch {
         continue;
@@ -352,11 +354,12 @@ export async function verifySetup(
     }
     const result = await verifyMutation(root, operation);
     if (result.content) {
-      keyReferenceFound ||= result.content.includes(
-        plan.workspace.key_env_var!,
-      );
+      keyReferenceFound ||=
+        plan.workspace.key_env_var !== undefined &&
+        result.content.includes(plan.workspace.key_env_var);
       hostReferenceFound ||=
-        result.content.includes(plan.workspace.tracking_host_env_var!) ||
+        (plan.workspace.tracking_host_env_var !== undefined &&
+          result.content.includes(plan.workspace.tracking_host_env_var)) ||
         result.content.includes(plan.workspace.tracking_host);
     }
     checks.push(
@@ -378,8 +381,8 @@ export async function verifySetup(
   if (!keyReferenceFound || !hostReferenceFound) {
     const scanned = await scanPublicConfigReferences(
       root,
-      plan.workspace.key_env_var!,
-      plan.workspace.tracking_host_env_var!,
+      plan.workspace.key_env_var,
+      plan.workspace.tracking_host_env_var,
       plan.workspace.tracking_host,
     );
     keyReferenceFound ||= scanned.key;

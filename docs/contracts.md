@@ -52,9 +52,9 @@ preview, approval, and audit.
 
 A change approval binds one setup-plan digest, canonical repository-root
 fingerprint, exact unique operation IDs, confirmation time, and expiry. The
-current issuer is an interactive local user. Application validates every binding
-and records consumption under `.usermaven/apply/` so an approval cannot be
-replayed.
+interactive CLI authenticates and registers it under `.usermaven/approvals/`.
+MCP application accepts only its ID, reloads and verifies every binding and HMAC,
+and records consumption under `.usermaven/apply/` so it cannot be replayed.
 
 The application result records normalized operation outcomes, rollback status
 and warnings, timestamps, and the relative state-record path. It never includes

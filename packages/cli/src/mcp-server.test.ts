@@ -12,7 +12,10 @@ import { fileURLToPath } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
-import { createChangeApproval } from "@usermaven/wizard-core";
+import {
+  createChangeApproval,
+  storeChangeApproval,
+} from "@usermaven/wizard-core";
 import {
   applyResultSchema,
   changePreviewSchema,
@@ -285,7 +288,7 @@ describe("local MCP server", () => {
           }),
         ]),
       );
-      expect(preview.summary.mutations).toBe(3);
+      expect(preview.summary.mutations).toBe(4);
       expect(JSON.stringify({ plan, preview })).not.toContain(
         "actual-workspace-key",
       );
@@ -350,8 +353,12 @@ describe("local MCP server", () => {
     await mkdir(join(root, "src"));
     await writeFile(
       join(root, "package.json"),
-      JSON.stringify({ name: "mcp-apply" }),
+      JSON.stringify({
+        name: "mcp-apply",
+        dependencies: { react: "19.2.7", vite: "8.1.4" },
+      }),
     );
+    await writeFile(join(root, "src", "main.ts"), "export {};\n");
     const { client, server } = await connectedServer(root);
     try {
       const trackingPlan = await generatedTrackingPlan(client);
@@ -378,9 +385,10 @@ describe("local MCP server", () => {
         ],
         confirmedByInteractiveUser: true,
       });
+      await storeChangeApproval(root, approval);
       const applied = await client.callTool({
         name: "apply_changes",
-        arguments: { setup_plan: plan, approval },
+        arguments: { setup_plan: plan, approval_id: approval.approval_id },
       });
       const result = applyResultSchema.parse(applied.structuredContent);
 

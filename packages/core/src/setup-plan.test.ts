@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -9,6 +9,8 @@ import {
   type AiInstrumentationProposal,
 } from "@usermaven/wizard-schemas";
 import { afterEach, describe, expect, it } from "vitest";
+import { applyPatch } from "diff";
+import { JsxEmit, ModuleKind, ScriptTarget, transpileModule } from "typescript";
 
 import { previewChanges } from "./change-preview.js";
 import { generateSetupPlan } from "./setup-plan.js";
@@ -139,6 +141,7 @@ describe("generateSetupPlan", () => {
     expect(plan.operations.map((operation) => operation.type)).toEqual([
       "install_package",
       "create_file",
+      "edit_file",
       "manual_step",
       "create_file",
       "run_check",
@@ -154,7 +157,7 @@ describe("generateSetupPlan", () => {
     expect(serialized).not.toContain("actual-workspace-key");
     expect(
       plan.operations.filter((operation) => operation.requires_approval),
-    ).toHaveLength(4);
+    ).toHaveLength(5);
     expect(plan.instrumentation?.generated_by.model).toBe("test-coding-model");
     expect(plan.instrumentation?.coverage).toEqual([
       expect.objectContaining({
@@ -164,6 +167,43 @@ describe("generateSetupPlan", () => {
         ]),
       }),
     ]);
+    const client = plan.operations.find(
+      (operation) =>
+        operation.type === "create_file" &&
+        operation.path === "src/usermaven.ts",
+    );
+    const wiring = plan.operations.find(
+      (operation) => operation.id === "wire-usermaven-entry",
+    );
+    expect(client && "content" in client ? client.content : "").toContain(
+      "autoPageview: true",
+    );
+    expect(wiring).toMatchObject({
+      type: "edit_file",
+      path: "src/main.jsx",
+    });
+    const entrySource = await readFile(
+      join(fixtures, "react-vite", "src", "main.jsx"),
+      "utf8",
+    );
+    const wired =
+      wiring?.type === "edit_file"
+        ? applyPatch(entrySource, wiring.unified_diff)
+        : false;
+    expect(wired).not.toBe(false);
+    expect(wired).toContain('import "./usermaven";');
+    const compilation = transpileModule(
+      client && "content" in client ? client.content : "",
+      {
+        compilerOptions: {
+          target: ScriptTarget.ES2022,
+          module: ModuleKind.ESNext,
+          jsx: JsxEmit.ReactJSX,
+        },
+        reportDiagnostics: true,
+      },
+    );
+    expect(compilation.diagnostics ?? []).toEqual([]);
   });
 
   it("uses Next.js public environment names and an App Router target", async () => {
@@ -194,10 +234,103 @@ describe("generateSetupPlan", () => {
     );
 
     expect(plan.workspace.key_env_var).toBe("NEXT_PUBLIC_USERMAVEN_KEY");
-    expect(create).toMatchObject({ path: "app/usermaven-client.ts" });
+    expect(create).toMatchObject({ path: "app/usermaven-provider.tsx" });
     expect(create && "content" in create ? create.content : "").toContain(
       '"use client"',
     );
+    expect(plan.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "wire-usermaven-layout",
+          type: "edit_file",
+          path: "app/layout.jsx",
+        }),
+      ]),
+    );
+  });
+
+  it("wires a Next.js src App Router layout with exact file binding", async () => {
+    const nextTrackingPlan = trackingPlanSchema.parse({
+      ...trackingPlan,
+      proposal: {
+        ...trackingPlan.proposal,
+        source: {
+          ...trackingPlan.proposal!.source,
+          framework: "next-app-router",
+        },
+      },
+    });
+    const plan = await generateSetupPlan(
+      {
+        projectRoot: join(fixtures, "next-src-app-router"),
+        workspace,
+        trackingPlan: nextTrackingPlan,
+        instrumentationProposal: instrumentationProposal(
+          nextTrackingPlan,
+          "src/app/generated-usermaven-tracking.ts",
+        ),
+      },
+      options,
+    );
+
+    expect(plan.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "create-usermaven-client",
+          type: "create_file",
+          path: "src/app/usermaven-provider.tsx",
+        }),
+        expect.objectContaining({
+          id: "wire-usermaven-layout",
+          type: "edit_file",
+          path: "src/app/layout.tsx",
+          before_hash: expect.stringMatching(/^sha256:[a-f0-9]{64}$/u),
+        }),
+      ]),
+    );
+    expect(JSON.stringify(plan)).toContain("<UsermavenBootstrap />");
+    const wiring = plan.operations.find(
+      (operation) => operation.id === "wire-usermaven-layout",
+    );
+    const layout = await readFile(
+      join(fixtures, "next-src-app-router", "src", "app", "layout.tsx"),
+      "utf8",
+    );
+    const wired =
+      wiring?.type === "edit_file"
+        ? applyPatch(layout, wiring.unified_diff)
+        : false;
+    expect(wired).not.toBe(false);
+    expect(wired).toContain("<UsermavenBootstrap />");
+    expect(
+      transpileModule(typeof wired === "string" ? wired : "", {
+        compilerOptions: {
+          target: ScriptTarget.ES2022,
+          module: ModuleKind.ESNext,
+          jsx: JsxEmit.ReactJSX,
+        },
+        reportDiagnostics: true,
+      }).diagnostics ?? [],
+    ).toEqual([]);
+  });
+
+  it("refuses unsupported generic React projects", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-unsupported-"));
+    temporaryRoots.push(root);
+    await mkdir(join(root, "src"));
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ dependencies: { react: "19.2.7" } }),
+    );
+
+    await expect(
+      generateSetupPlan({
+        projectRoot: root,
+        workspace,
+        trackingPlan,
+        instrumentationProposal: instrumentationProposal(),
+      }),
+    ).rejects.toThrow("Unsupported framework for browser setup: react");
   });
 
   it("never overwrites an existing target", async () => {
@@ -212,6 +345,7 @@ describe("generateSetupPlan", () => {
       join(root, "src", "usermaven.ts"),
       "private customer source",
     );
+    await writeFile(join(root, "src", "main.ts"), "export {};\n");
 
     const plan = await generateSetupPlan(
       {
@@ -372,8 +506,8 @@ describe("previewChanges", () => {
     const preview = previewChanges(plan);
 
     expect(preview.summary).toEqual({
-      total: 5,
-      mutations: 3,
+      total: 6,
+      mutations: 4,
       manual_steps: 1,
       checks: 1,
     });

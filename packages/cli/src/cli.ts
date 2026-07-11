@@ -15,6 +15,7 @@ import {
   previewChanges,
   resumeWorkflow,
   saveWorkflowCheckpoint,
+  storeChangeApproval,
   verifySetup,
 } from "@usermaven/wizard-core";
 import {
@@ -274,11 +275,14 @@ async function main(): Promise<void> {
       },
       { ttlMs: ttlMinutes * 60 * 1_000 },
     );
+    const registryPath = await storeChangeApproval(root, result);
     const serialized = `${JSON.stringify(result, null, 2)}\n`;
     const output = parsed.options.get("--output");
     if (output) {
       await writeFile(output, serialized, { flag: "wx", mode: 0o600 });
-      process.stdout.write(`Approval written to ${output}\n`);
+      process.stdout.write(
+        `Approval ${result.approval_id} written to ${output} and registered at ${registryPath}\n`,
+      );
     } else {
       process.stdout.write(serialized);
     }

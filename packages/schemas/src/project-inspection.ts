@@ -56,6 +56,14 @@ export const instrumentationOccurrenceSchema = z
   })
   .strict();
 
+export const entryPointSchema = z
+  .object({
+    path: relativePath,
+    role: z.enum(["app_layout", "pages_app", "client_entry"]),
+    sha256: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
+  })
+  .strict();
+
 export const projectInspectionSchema = z
   .object({
     schema_version: schemaVersion,
@@ -69,6 +77,7 @@ export const projectInspectionSchema = z
     evidence: z.array(inspectionEvidenceSchema).max(100),
     analytics_dependencies: z.array(analyticsDependencySchema).max(1_000),
     instrumentation: z.array(instrumentationOccurrenceSchema).max(10_000),
+    entry_points: z.array(entryPointSchema).max(20).default([]),
     scan: z
       .object({
         files_considered: z.number().int().nonnegative(),

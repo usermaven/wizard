@@ -25,7 +25,11 @@ import {
 } from "@usermaven/wizard-schemas";
 import { applyPatch } from "diff";
 
-import { digestSetupPlan, fingerprintRepositoryRoot } from "./approval.js";
+import {
+  digestSetupPlan,
+  fingerprintRepositoryRoot,
+  verifyChangeApproval,
+} from "./approval.js";
 
 const SNAPSHOT_LIMIT = 5_000_000;
 const STATE_DIRECTORY = ".usermaven/apply";
@@ -316,8 +320,11 @@ export async function applyChanges(
   options: ApplyChangesOptions = {},
 ): Promise<ApplyResult> {
   const plan = setupPlanSchema.parse(input.plan);
-  const approval = changeApprovalSchema.parse(input.approval);
   const root = await realpath(input.projectRoot);
+  const approval = await verifyChangeApproval(
+    root,
+    changeApprovalSchema.parse(input.approval),
+  );
   const now = options.now ?? (() => new Date());
   const startedAt = now();
   const planDigest = digestSetupPlan(plan);

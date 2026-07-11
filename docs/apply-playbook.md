@@ -45,9 +45,11 @@ usermaven-wizard apply setup-plan.json \
   --root /path/to/project
 ```
 
-An MCP client may instead pass the unchanged plan and approval to
-`apply_changes`. The MCP process is fixed to its startup `--root` and cannot
-create an approval.
+An MCP client passes the unchanged plan and only the returned `approval_id` to
+`apply_changes`. The server loads the private artifact registered under
+`.usermaven/approvals/`, verifies its checkout-local HMAC, and then consumes it.
+The MCP process is fixed to its startup `--root` and cannot create or broaden an
+approval through the protocol.
 
 Application checks the plan digest, root fingerprint, operation IDs, expiry,
 one-time use, path confinement, symlink parents, and edit preimage hashes. File
@@ -71,9 +73,11 @@ result warnings before retrying with a new plan and approval.
 
 `createChangeApproval` accepts a literal confirmation flag because the core
 library cannot prove who controls the terminal. Any UI or agent host embedding
-the library must independently enforce a real human confirmation. This is a
-procedural local safety boundary, not authentication or a cryptographic
-signature.
+the library must independently enforce a real human confirmation. The CLI
+authenticates the resulting artifact with a checkout-local HMAC. This protects
+the MCP protocol boundary; a coding agent running as the same OS user with
+unrestricted shell access still requires a separately permissioned approval
+broker for a stronger boundary.
 
 After a successful apply, continue with the [verification
 playbook](verification-playbook.md).

@@ -73,7 +73,7 @@ const trackingPlan = trackingPlanSchema.parse({
     assumptions: [],
     warnings: [],
     source: {
-      framework: "node",
+      framework: "react-vite",
       inspected_at: "2026-07-11T12:00:00Z",
       inspection_truncated: false,
     },
@@ -111,8 +111,13 @@ async function project(): Promise<string> {
   await mkdir(join(root, "src"));
   await writeFile(
     join(root, "package.json"),
-    JSON.stringify({ name: "apply-fixture", scripts: { build: "echo build" } }),
+    JSON.stringify({
+      name: "apply-fixture",
+      scripts: { build: "echo build" },
+      dependencies: { react: "19.2.7", vite: "8.1.4" },
+    }),
   );
+  await writeFile(join(root, "src", "main.ts"), "export {};\n");
   return root;
 }
 
@@ -354,7 +359,7 @@ describe("applyChanges", () => {
       ),
     ).rejects.toThrow("exact setup plan");
     await expect(access(join(root, "src", "usermaven.ts"))).rejects.toThrow();
-    await expect(access(join(root, ".usermaven"))).rejects.toThrow();
+    await expect(access(join(root, ".usermaven", "apply"))).rejects.toThrow();
   });
 
   it("rejects symlink parents without touching the external directory", async () => {
@@ -425,6 +430,25 @@ describe("applyChanges", () => {
         { now: () => new Date("2026-07-11T16:00:00Z") },
       ),
     ).rejects.toThrow("expired");
-    await expect(access(join(root, ".usermaven"))).rejects.toThrow();
+    await expect(access(join(root, ".usermaven", "apply"))).rejects.toThrow();
+  });
+
+  it("rejects a schema-valid forged approval signature", async () => {
+    const root = await project();
+    const plan = await generatedPlan(root);
+    const approved = await approval(root, plan, ["create-usermaven-client"]);
+    const forged = {
+      ...approved,
+      approval_id: "approval_forged-approval-1234",
+      signature: `sha256:${"0".repeat(64)}`,
+    };
+
+    await expect(
+      applyChanges(
+        { projectRoot: root, plan, approval: forged },
+        { now: fixedNow },
+      ),
+    ).rejects.toThrow("signature is invalid");
+    await expect(access(join(root, "src", "usermaven.ts"))).rejects.toThrow();
   });
 });

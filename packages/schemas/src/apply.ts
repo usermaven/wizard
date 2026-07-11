@@ -15,6 +15,7 @@ export const changeApprovalSchema = z
     approved_by: z.literal("interactive_local_user"),
     confirmed_at: isoDateTime,
     expires_at: isoDateTime,
+    signature: sha256DigestSchema,
   })
   .strict()
   .superRefine((approval, context) => {

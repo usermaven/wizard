@@ -94,8 +94,9 @@ usermaven-wizard apply ./setup-plan.json \
 ```
 
 Approval requires an interactive terminal. It is bound to the plan digest,
-canonical repository root, exact operation IDs, and an expiry; it is consumed
-once. See the [application playbook](docs/apply-playbook.md).
+canonical repository root, exact operation IDs, and an expiry, authenticated in
+a private local registry, and consumed once. MCP application uses only the
+registered approval ID. See the [application playbook](docs/apply-playbook.md).
 
 ## Verify the applied setup
 

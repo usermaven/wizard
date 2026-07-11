@@ -1,3 +1,4 @@
+import { createHash } from "node:crypto";
 import { lstat, readdir, readFile, realpath, stat } from "node:fs/promises";
 import { extname, join, relative, resolve, sep } from "node:path";
 
@@ -8,7 +9,7 @@ import {
   type ProjectInspection,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.10.0";
+const WIZARD_VERSION = "0.11.0";
 const DEFAULT_MAX_FILES = 5_000;
 const DEFAULT_MAX_FILE_BYTES = 1_000_000;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000;
@@ -73,14 +74,14 @@ const tokenRules: TokenRule[] = [
   {
     provider: "usermaven",
     kind: "initialize",
-    token: "usermaven.init",
-    pattern: /\busermaven\s*\.\s*init\s*\(/g,
+    token: "usermavenClient",
+    pattern: /\b(?:usermaven\s*\.\s*init|usermavenClient)\s*\(/g,
   },
   {
     provider: "usermaven",
     kind: "track",
     token: "usermaven.track",
-    pattern: /\busermaven\s*\.\s*track\s*\(/g,
+    pattern: /\busermaven\s*\??\.\s*track\s*\(/g,
   },
   {
     provider: "usermaven",
@@ -326,10 +327,26 @@ async function detectFramework(
       });
       return { framework: "next-app-router", confidence: 0.99, evidence };
     }
+    if (await regularPathExists(join(root, "src", "app"), "directory")) {
+      evidence.push({
+        kind: "directory",
+        path: "src/app",
+        detail: "Next.js App Router",
+      });
+      return { framework: "next-app-router", confidence: 0.99, evidence };
+    }
     if (await regularPathExists(join(root, "pages"), "directory")) {
       evidence.push({
         kind: "directory",
         path: "pages",
+        detail: "Next.js Pages Router",
+      });
+      return { framework: "next-pages-router", confidence: 0.99, evidence };
+    }
+    if (await regularPathExists(join(root, "src", "pages"), "directory")) {
+      evidence.push({
+        kind: "directory",
+        path: "src/pages",
         detail: "Next.js Pages Router",
       });
       return { framework: "next-pages-router", confidence: 0.99, evidence };
@@ -360,6 +377,78 @@ async function detectFramework(
     return { framework: "node", confidence: 0.65, evidence };
   }
   return { framework: "unknown", confidence: 0, evidence };
+}
+
+async function discoverEntryPoints(
+  root: string,
+  framework: Framework,
+): Promise<ProjectInspection["entry_points"]> {
+  const candidates: Array<{
+    role: ProjectInspection["entry_points"][number]["role"];
+    paths: string[];
+  }> =
+    framework === "next-app-router"
+      ? [
+          {
+            role: "app_layout",
+            paths: [
+              "app/layout.tsx",
+              "app/layout.jsx",
+              "app/layout.ts",
+              "app/layout.js",
+              "src/app/layout.tsx",
+              "src/app/layout.jsx",
+              "src/app/layout.ts",
+              "src/app/layout.js",
+            ],
+          },
+        ]
+      : framework === "next-pages-router"
+        ? [
+            {
+              role: "pages_app",
+              paths: [
+                "pages/_app.tsx",
+                "pages/_app.jsx",
+                "pages/_app.ts",
+                "pages/_app.js",
+                "src/pages/_app.tsx",
+                "src/pages/_app.jsx",
+                "src/pages/_app.ts",
+                "src/pages/_app.js",
+              ],
+            },
+          ]
+        : framework === "react-vite"
+          ? [
+              {
+                role: "client_entry",
+                paths: [
+                  "src/main.tsx",
+                  "src/main.jsx",
+                  "src/main.ts",
+                  "src/main.js",
+                ],
+              },
+            ]
+          : [];
+  const result: ProjectInspection["entry_points"] = [];
+  for (const candidate of candidates) {
+    for (const path of candidate.paths) {
+      const absolute = join(root, path);
+      if (!(await regularPathExists(absolute, "file"))) continue;
+      const item = await lstat(absolute);
+      if (item.isSymbolicLink() || item.size > DEFAULT_MAX_FILE_BYTES) continue;
+      const content = await readFile(absolute);
+      result.push({
+        path,
+        role: candidate.role,
+        sha256: `sha256:${createHash("sha256").update(content).digest("hex")}`,
+      });
+      break;
+    }
+  }
+  return result;
 }
 
 async function collectSourceFiles(
@@ -438,6 +527,7 @@ export async function inspectProject(
   const packageJson = await readPackageJson(root, warnings);
   const detected = await detectFramework(root, packageJson);
   const packageManager = await detectPackageManager(root);
+  const entryPoints = await discoverEntryPoints(root, detected.framework);
   const analyticsDependencies: ProjectInspection["analytics_dependencies"] = [];
 
   for (const [dependencyType, dependencies] of [
@@ -526,6 +616,7 @@ export async function inspectProject(
     evidence: detected.evidence,
     analytics_dependencies: analyticsDependencies,
     instrumentation,
+    entry_points: entryPoints,
     scan: {
       files_considered: collected.files.length,
       files_scanned: filesScanned,

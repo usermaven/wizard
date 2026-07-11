@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   aiTrackingProposalSchema,
@@ -11,25 +11,13 @@ import {
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.10.0";
+import { canonicalJsonDigest } from "./canonical.js";
+
+const WIZARD_VERSION = "0.11.0";
 const PROMPT_VERSION = "ai-tracking-plan-v1";
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value)
-        .sort(([left], [right]) => left.localeCompare(right))
-        .map(([key, item]) => [key, canonicalize(item)]),
-    );
-  }
-  return value;
-}
-
 function digestBusinessContext(context: BusinessContext): string {
-  return `sha256:${createHash("sha256")
-    .update(JSON.stringify(canonicalize(context)))
-    .digest("hex")}`;
+  return canonicalJsonDigest(context);
 }
 
 export interface CreateAiTrackingPlanInput {
