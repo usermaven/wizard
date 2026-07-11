@@ -1,0 +1,6 @@
+node_modules
+dist
+coverage
+fixtures/**/.next
+fixtures/**/node_modules
+package-lock.json

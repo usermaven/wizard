@@ -1,0 +1,10 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "types": ["node"],
+    "paths": {
+      "@usermaven/wizard-schemas": ["../schemas/src/index.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

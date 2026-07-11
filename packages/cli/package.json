@@ -1,0 +1,39 @@
+{
+  "name": "@usermaven/wizard",
+  "version": "0.1.0",
+  "description": "Local-first Usermaven installation, instrumentation, and verification CLI.",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/usermaven/wizard.git",
+    "directory": "packages/cli"
+  },
+  "bugs": "https://github.com/usermaven/wizard/issues",
+  "homepage": "https://github.com/usermaven/wizard#readme",
+  "type": "module",
+  "bin": {
+    "usermaven-wizard": "./dist/cli.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup src/index.ts src/cli.ts --format esm --dts --clean",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@usermaven/wizard-schemas": "0.1.0"
+  },
+  "publishConfig": {
+    "access": "public",
+    "provenance": true
+  }
+}

@@ -1,0 +1,65 @@
+import {
+  wizardManifestSchema,
+  type WizardManifest,
+} from "@usermaven/wizard-schemas";
+
+const readOnly = (name: string, description: string) => ({
+  name,
+  description,
+  mutates_repository: false,
+  requires_approval: false,
+  agent_safe: true,
+});
+
+const mutating = (name: string, description: string) => ({
+  name,
+  description,
+  mutates_repository: true,
+  requires_approval: true,
+  agent_safe: true,
+});
+
+export const manifest: WizardManifest = wizardManifestSchema.parse({
+  schema_version: "1",
+  product: "@usermaven/wizard",
+  version: "0.1.0",
+  node: ">=20",
+  commands: [
+    readOnly(
+      "inspect",
+      "Detect the framework and existing analytics instrumentation.",
+    ),
+    readOnly(
+      "plan",
+      "Generate a setup and tracking plan without changing files.",
+    ),
+    mutating("apply", "Apply explicitly approved package and file operations."),
+    readOnly("verify", "Run static, runtime, transport, and receipt checks."),
+    readOnly("doctor", "Diagnose configuration and connectivity problems."),
+    readOnly("manifest", "Print this machine-readable command manifest."),
+  ],
+  local_mcp_tools: [
+    readOnly(
+      "inspect_project",
+      "Inspect the local project and return normalized facts.",
+    ),
+    readOnly(
+      "propose_tracking_plan",
+      "Propose versioned identity, event, and property contracts.",
+    ),
+    readOnly("generate_setup_plan", "Create an approval-ready setup plan."),
+    readOnly(
+      "preview_changes",
+      "Render proposed repository changes without applying them.",
+    ),
+    mutating(
+      "apply_changes",
+      "Apply only the operations covered by explicit approval.",
+    ),
+    readOnly(
+      "verify_setup",
+      "Verify setup without returning raw analytics payloads.",
+    ),
+    readOnly("doctor", "Return normalized local diagnostics."),
+  ],
+});
