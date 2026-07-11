@@ -24,7 +24,8 @@ confined to one root selected when the process starts.
 npm install
 npm run build
 node /absolute/path/to/wizard/packages/cli/dist/mcp.js \
-  --root /absolute/path/to/project
+  --root /absolute/path/to/project \
+  --trusted-workspace-keys /absolute/path/to/trusted-workspace-keys.json
 ```
 
 The process waits for MCP JSON-RPC on stdin. Do not type ordinary commands into
@@ -42,7 +43,9 @@ Most desktop and editor clients accept a configuration shaped like this:
       "args": [
         "/absolute/path/to/wizard/packages/cli/dist/mcp.js",
         "--root",
-        "/absolute/path/to/project"
+        "/absolute/path/to/project",
+        "--trusted-workspace-keys",
+        "/absolute/path/to/trusted-workspace-keys.json"
       ]
     }
   }

@@ -5,6 +5,7 @@ export {
   approvalConfirmation,
   createChangeApproval,
   digestSetupPlan,
+  fingerprintApprovalContext,
   fingerprintRepositoryRoot,
   loadChangeApproval,
   storeChangeApproval,
@@ -32,6 +33,7 @@ export {
 export {
   createVerificationSession,
   verifySetup,
+  workspaceReceiptAttestationPayload,
   type CreateVerificationSessionInput,
   type CreateVerificationSessionOptions,
   type VerifySetupInput,

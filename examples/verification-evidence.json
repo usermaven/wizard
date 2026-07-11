@@ -26,6 +26,11 @@
     "property_names": ["workspace_id"],
     "identified_user": true,
     "identified_company": false,
-    "verification_marker_matched": true
+    "verification_marker_matched": true,
+    "attestation": {
+      "algorithm": "ed25519",
+      "key_id": "replace-with-server-key-id",
+      "signature": "replace_with_server_generated_base64url_signature"
+    }
   }
 }

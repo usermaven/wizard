@@ -57,6 +57,18 @@ event/property names, identity booleans, and `verification_marker_matched`.
 Never place raw analytics rows or marker values beyond the session ID into the
 evidence artifact.
 
+The remote MCP must sign the normalized receipt and session ID with its Ed25519
+verification key. Configure the corresponding public key map locally as JSON:
+
+```json
+{
+  "production-2026-01": "-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----\n"
+}
+```
+
+An unattested receipt, an unknown key ID, or an invalid signature can never
+produce a passing verification result.
+
 The current public MCP can supply this without a dedicated installation tool:
 
 1. Call `workspace.get_context`; SHA-256 the returned workspace `identifier`
@@ -80,11 +92,12 @@ Replace its session ID, timestamps, fingerprint, and normalized names.
 usermaven-wizard verify setup-plan.json \
   --session verification-session.json \
   --evidence verification-evidence.json \
+  --trusted-workspace-keys trusted-workspace-keys.json \
   --root /path/to/project
 ```
 
-Or call `verify_setup` with the same plan, session, evidence, and MCP
-`project_path`.
+Or configure `usermaven-wizard-mcp` with `--trusted-workspace-keys` and call
+`verify_setup` with the same plan, session, evidence, and MCP `project_path`.
 
 The static layer independently checks:
 

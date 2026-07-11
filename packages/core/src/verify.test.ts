@@ -1,4 +1,8 @@
-import { createHash } from "node:crypto";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign as signPayload,
+} from "node:crypto";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -11,7 +15,11 @@ import {
 } from "@usermaven/wizard-schemas";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { createVerificationSession, verifySetup } from "./verify.js";
+import {
+  createVerificationSession,
+  verifySetup,
+  workspaceReceiptAttestationPayload,
+} from "./verify.js";
 
 const roots: string[] = [];
 const oldAction = "export function complete() { return true; }\n";
@@ -21,6 +29,14 @@ const client = `const key = import.meta.env.VITE_USERMAVEN_KEY;
 const host = import.meta.env.VITE_USERMAVEN_TRACKING_HOST ?? "https://events.example.com";
 export const usermaven = { key, host };
 `;
+const receiptKeys = generateKeyPairSync("ed25519");
+const receiptKeyId = "test-workspace-key";
+const trustedWorkspaceKeys = {
+  [receiptKeyId]: receiptKeys.publicKey.export({
+    type: "spki",
+    format: "pem",
+  }) as string,
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -184,7 +200,7 @@ function plan(): SetupPlan {
 }
 
 function evidence(sessionId: string): VerificationEvidence {
-  return {
+  const result: VerificationEvidence = {
     session_id: sessionId,
     runtime: {
       source: "e2e_test",
@@ -213,8 +229,21 @@ function evidence(sessionId: string): VerificationEvidence {
       identified_user: true,
       identified_company: false,
       verification_marker_matched: true,
+      attestation: {
+        algorithm: "ed25519",
+        key_id: receiptKeyId,
+        signature: "placeholder-signature-that-is-long-enough-for-schema",
+      },
     },
   };
+  result.workspace_receipt!.attestation.signature = signPayload(
+    null,
+    Buffer.from(
+      workspaceReceiptAttestationPayload(sessionId, result.workspace_receipt!),
+    ),
+    receiptKeys.privateKey,
+  ).toString("base64url");
+  return result;
 }
 
 describe("verification", () => {
@@ -252,7 +281,10 @@ describe("verification", () => {
         session,
         evidence: evidence(session.session_id),
       },
-      { now: () => new Date("2026-07-11T15:05:00Z") },
+      {
+        now: () => new Date("2026-07-11T15:05:00Z"),
+        trustedWorkspaceKeys,
+      },
     );
 
     expect(verificationResultSchema.safeParse(result).success).toBe(true);
@@ -265,6 +297,33 @@ describe("verification", () => {
       identified_company: false,
     });
     expect(JSON.stringify(result)).not.toContain("private-payload-value");
+  });
+
+  it("rejects otherwise-valid workspace receipts without a trusted attestation key", async () => {
+    const root = await project();
+    const setup = plan();
+    const session = createVerificationSession(
+      { plan: setup, environment: "staging" },
+      { now: () => new Date("2026-07-11T15:00:00Z") },
+    );
+    const result = await verifySetup(
+      {
+        projectRoot: root,
+        plan: setup,
+        session,
+        evidence: evidence(session.session_id),
+      },
+      { now: () => new Date("2026-07-11T15:05:00Z") },
+    );
+
+    expect(result.outcome).toBe("fail");
+    expect(
+      result.checks.find((check) => check.id === "workspace-receipt"),
+    ).toMatchObject({
+      outcome: "fail",
+      normalized_details: { attestation_valid: false },
+    });
+    expect(result.received.event_names).toEqual([]);
   });
 
   it("warns when live evidence is not yet supplied", async () => {
@@ -281,7 +340,10 @@ describe("verification", () => {
         session,
         evidence: { session_id: session.session_id },
       },
-      { now: () => new Date("2026-07-11T15:05:00Z") },
+      {
+        now: () => new Date("2026-07-11T15:05:00Z"),
+        trustedWorkspaceKeys,
+      },
     );
 
     expect(result.outcome).toBe("warn");

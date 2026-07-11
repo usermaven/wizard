@@ -12,8 +12,8 @@ and proof.
       exercised, and verified with a real emitted event.
 - [ ] Unsupported frameworks stop with a typed actionable error and never
       receive fallback browser code.
-- [ ] An MCP caller cannot mint or broaden an application approval.
-- [ ] A verification pass cannot be created from unauthenticated evidence.
+- [x] An MCP caller cannot mint or broaden an application approval.
+- [x] A verification pass cannot be created from unauthenticated evidence.
 - [ ] The full CLI and MCP flow can proceed through artifact references without
       repeatedly embedding setup plans.
 - [ ] `npm run check`, focused end-to-end fixtures, package dry-runs, audit, and
@@ -44,10 +44,11 @@ and proof.
       `"undefined"`; absent key names fail the static reference check.
 - [x] **6: deterministic canonicalization.** All security/business digests use
       one code-point ordered canonical JSON implementation.
-- [ ] **7: approve/apply TOCTOU.** Bind package scripts/manifests and relevant
-      repository state to the approval.
-- [ ] **Additional finding: evidence authenticity.** Require attested or
-      independently obtained verification evidence before returning `pass`.
+- [x] **7: approve/apply TOCTOU.** Package manifests, lockfiles, planned edits,
+      and create targets are bound into the signed approval context.
+- [x] **Additional finding: evidence authenticity.** A passing workspace receipt
+      requires a trusted-key Ed25519 attestation over the session and normalized
+      receipt. Remote MCP key rollout remains an operational dependency.
 
 ## P1 — usable agent and human flow
 
@@ -87,7 +88,7 @@ and proof.
 - [ ] Generated code syntax/type compilation and real runtime event delivery.
 - [ ] Approval TTL, duplicate/unknown/manual-only IDs, forgery, cross-root,
       broadening, replay, and concurrent apply.
-- [ ] Missing env names and authenticated/unauthenticated verification evidence.
+- [x] Missing env names and authenticated/unauthenticated verification evidence.
 - [ ] Successful generated edit, diff-header edge cases, and cap boundaries.
 - [ ] npm, pnpm, Yarn Classic/Modern, Bun, and monorepo package discovery.
 - [ ] Corrupt records, symlink parents, stale locks, and interrupted workflows.

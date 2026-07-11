@@ -28,6 +28,14 @@ import { canonicalJson } from "./canonical.js";
 
 const APPROVAL_DIRECTORY = ".usermaven/approvals";
 const APPROVAL_KEY = ".usermaven/approval.key";
+const PACKAGE_STATE_FILES = [
+  "package.json",
+  "package-lock.json",
+  "pnpm-lock.yaml",
+  "yarn.lock",
+  "bun.lock",
+  "bun.lockb",
+] as const;
 
 function isErrno(error: unknown, code: string): boolean {
   return (error as NodeJS.ErrnoException).code === code;
@@ -83,6 +91,55 @@ function signApproval(
   return `sha256:${createHmac("sha256", key)
     .update(canonicalJson(approval))
     .digest("hex")}`;
+}
+
+async function boundedFileState(root: string, path: string) {
+  const absolute = join(root, path);
+  try {
+    const item = await lstat(absolute);
+    if (item.isSymbolicLink() || !item.isFile() || item.size > 5_000_000)
+      throw new Error("Approval context contains an unsafe package state file");
+    return {
+      path,
+      exists: true,
+      digest: canonicalJsonDigest(await readFile(absolute)),
+    };
+  } catch (error) {
+    if (isErrno(error, "ENOENT")) return { path, exists: false, digest: null };
+    throw error;
+  }
+}
+
+export async function fingerprintApprovalContext(
+  projectRoot: string,
+  input: SetupPlan,
+): Promise<string> {
+  const root = await realpath(projectRoot);
+  const plan = setupPlanSchema.parse(input);
+  const bindsPackageState = plan.operations.some(
+    (operation) =>
+      operation.type === "install_package" || operation.type === "run_check",
+  );
+  const packageState = bindsPackageState
+    ? await Promise.all(
+        PACKAGE_STATE_FILES.map((path) => boundedFileState(root, path)),
+      )
+    : [];
+  const createState = await Promise.all(
+    plan.operations
+      .filter((operation) => operation.type === "create_file")
+      .map((operation) => boundedFileState(root, operation.path)),
+  );
+  return canonicalJsonDigest({
+    package_state: packageState,
+    edits: plan.operations
+      .filter((operation) => operation.type === "edit_file")
+      .map((operation) => ({
+        path: operation.path,
+        before_hash: operation.before_hash,
+      })),
+    creates: createState,
+  });
 }
 
 export function digestSetupPlan(input: SetupPlan): string {
@@ -155,6 +212,7 @@ export async function createChangeApproval(
     plan_id: plan.plan_id,
     plan_digest: digestSetupPlan(plan),
     repository_root_fingerprint: await fingerprintRepositoryRoot(root),
+    approval_context_digest: await fingerprintApprovalContext(root, plan),
     operation_ids: input.operationIds,
     approved_by: "interactive_local_user",
     confirmed_at: confirmedAt.toISOString(),

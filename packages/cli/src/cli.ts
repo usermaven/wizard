@@ -106,6 +106,24 @@ async function readJson(path: string, maximumBytes: number): Promise<unknown> {
   return JSON.parse(await readFile(path, "utf8"));
 }
 
+function parseTrustedWorkspaceKeys(value: unknown): Record<string, string> {
+  if (value === null || typeof value !== "object" || Array.isArray(value))
+    throw new Error("Trusted workspace keys must be a JSON object");
+  const entries = Object.entries(value);
+  if (
+    entries.length > 20 ||
+    entries.some(
+      ([key, publicKey]) =>
+        !/^[a-zA-Z0-9._-]{1,128}$/u.test(key) ||
+        typeof publicKey !== "string" ||
+        publicKey.length > 10_000,
+    )
+  ) {
+    throw new Error("Trusted workspace keys contain an invalid entry");
+  }
+  return Object.fromEntries(entries) as Record<string, string>;
+}
+
 async function main(): Promise<void> {
   const allowedOptions =
     command === "setup-plan"
@@ -128,7 +146,12 @@ async function main(): Promise<void> {
             : command === "verification-session"
               ? ["--environment", "--ttl-minutes"]
               : command === "verify"
-                ? ["--root", "--session", "--evidence"]
+                ? [
+                    "--root",
+                    "--session",
+                    "--evidence",
+                    "--trusted-workspace-keys",
+                  ]
                 : command === "checkpoint"
                   ? [
                       "--step",
@@ -342,12 +365,24 @@ async function main(): Promise<void> {
     const evidence = verificationEvidenceSchema.parse(
       await readJson(requiredOption(parsed.options, "--evidence"), 2_000_000),
     );
-    const result = await verifySetup({
-      projectRoot: parsed.options.get("--root") ?? process.cwd(),
-      plan,
-      session,
-      evidence,
-    });
+    const result = await verifySetup(
+      {
+        projectRoot: parsed.options.get("--root") ?? process.cwd(),
+        plan,
+        session,
+        evidence,
+      },
+      {
+        trustedWorkspaceKeys: parsed.options.get("--trusted-workspace-keys")
+          ? parseTrustedWorkspaceKeys(
+              await readJson(
+                parsed.options.get("--trusted-workspace-keys")!,
+                1_000_000,
+              ),
+            )
+          : {},
+      },
+    );
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     if (result.outcome === "fail") process.exitCode = 1;
     return;

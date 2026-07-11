@@ -31,7 +31,7 @@ network boundary. Output shown for human approval crosses a decision boundary.
 | AI edit of secrets or tool state                         | Reject environment, credential, package-manifest, lockfile, `.git`, `.usermaven`, dependency, symlink, and out-of-root paths. |
 | Historical events mistaken for verification              | Use a random short-lived session marker and reject evidence outside its bounded observation window.                           |
 | Receipt from the wrong workspace                         | Bind receipt evidence to the selected public-key fingerprint and suppress mismatched received names.                          |
-| Raw verification payload leakage                         | Accept strict normalized evidence only; return names, counts, booleans, statuses, and suggested fixes.                        |
+| Raw or forged verification evidence                      | Accept strict normalized evidence; require a trusted-key signed workspace receipt before pass; never return raw payloads.     |
 | Workspace key disclosure                                 | Accept only a key fingerprint and environment-variable name; reject raw key fields at contract boundaries.                    |
 | Preview mistaken for execution                           | Label previews as non-executing and retain approval requirements on every mutation operation.                                 |
 | Wrong-workspace writes or reads                          | Display the selected workspace and public-key fingerprint; scope OAuth/session tokens to one workspace.                       |

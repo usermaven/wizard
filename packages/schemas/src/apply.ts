@@ -11,6 +11,7 @@ export const changeApprovalSchema = z
     plan_id: z.string().min(8).max(128),
     plan_digest: sha256DigestSchema,
     repository_root_fingerprint: sha256DigestSchema,
+    approval_context_digest: sha256DigestSchema,
     operation_ids: z.array(z.string().min(1).max(128)).min(1).max(100),
     approved_by: z.literal("interactive_local_user"),
     confirmed_at: isoDateTime,

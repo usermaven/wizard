@@ -451,4 +451,42 @@ describe("applyChanges", () => {
     ).rejects.toThrow("signature is invalid");
     await expect(access(join(root, "src", "usermaven.ts"))).rejects.toThrow();
   });
+
+  it("rejects package-script changes made after approval", async () => {
+    const root = await project();
+    const plan = await generatedPlan(root);
+    const approved = await approval(root, plan, ["run-project-build"]);
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "apply-fixture",
+        scripts: { build: "node malicious-after-approval.js" },
+        dependencies: { react: "19.2.7", vite: "8.1.4" },
+      }),
+    );
+
+    await expect(
+      applyChanges(
+        { projectRoot: root, plan, approval: approved },
+        { now: fixedNow, commandRunner: async () => undefined },
+      ),
+    ).rejects.toThrow("context changed after approval");
+  });
+
+  it("rejects a create target that appears after approval", async () => {
+    const root = await project();
+    const plan = await generatedPlan(root);
+    const approved = await approval(root, plan, ["create-usermaven-client"]);
+    await writeFile(join(root, "src", "usermaven.ts"), "newer customer file");
+
+    await expect(
+      applyChanges(
+        { projectRoot: root, plan, approval: approved },
+        { now: fixedNow },
+      ),
+    ).rejects.toThrow("context changed after approval");
+    expect(await readFile(join(root, "src", "usermaven.ts"), "utf8")).toBe(
+      "newer customer file",
+    );
+  });
 });

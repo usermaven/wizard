@@ -75,6 +75,7 @@ const localStateAnnotations = {
 
 export interface WizardMcpServerOptions {
   root: string;
+  trustedWorkspaceKeys?: Record<string, string>;
 }
 
 class ScopedPathError extends Error {}
@@ -423,12 +424,15 @@ export async function createWizardMcpServer(
     async ({ project_path, setup_plan, session, evidence }) => {
       try {
         const projectRoot = await resolveProjectPath(root, project_path);
-        const result = await verifySetup({
-          projectRoot,
-          plan: setup_plan,
-          session,
-          evidence,
-        });
+        const result = await verifySetup(
+          {
+            projectRoot,
+            plan: setup_plan,
+            session,
+            evidence,
+          },
+          { trustedWorkspaceKeys: options.trustedWorkspaceKeys ?? {} },
+        );
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result,

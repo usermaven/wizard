@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID, verify as verifySignature } from "node:crypto";
 import { lstat, readFile, readdir, realpath } from "node:fs/promises";
 import { extname, join, resolve, sep } from "node:path";
 
@@ -12,10 +12,12 @@ import {
   type VerificationEvidence,
   type VerificationResult,
   type VerificationSession,
+  type WorkspaceReceiptEvidence,
 } from "@usermaven/wizard-schemas";
 import { applyPatch, parsePatch, reversePatch } from "diff";
 
 import { digestSetupPlan } from "./approval.js";
+import { canonicalJson } from "./canonical.js";
 
 const MAX_VERIFIED_FILE_BYTES = 5_000_000;
 const CONFIG_SCAN_EXTENSIONS = new Set([
@@ -81,6 +83,34 @@ export interface VerifySetupInput {
 
 export interface VerifySetupOptions {
   now?: () => Date;
+  trustedWorkspaceKeys?: Record<string, string>;
+}
+
+export function workspaceReceiptAttestationPayload(
+  sessionId: string,
+  receipt: WorkspaceReceiptEvidence,
+): string {
+  const { attestation: _attestation, ...unsigned } = receipt;
+  return canonicalJson({ session_id: sessionId, receipt: unsigned });
+}
+
+function validWorkspaceAttestation(
+  sessionId: string,
+  receipt: WorkspaceReceiptEvidence,
+  trustedKeys: Record<string, string>,
+): boolean {
+  const publicKey = trustedKeys[receipt.attestation.key_id];
+  if (!publicKey) return false;
+  try {
+    return verifySignature(
+      null,
+      Buffer.from(workspaceReceiptAttestationPayload(sessionId, receipt)),
+      publicKey,
+      Buffer.from(receipt.attestation.signature, "base64url"),
+    );
+  } catch {
+    return false;
+  }
 }
 
 function isWithinRoot(root: string, candidate: string): boolean {
@@ -552,6 +582,11 @@ export async function verifySetup(
     );
   } else {
     const workspace = evidence.workspace_receipt;
+    const attestationValid = validWorkspaceAttestation(
+      session.session_id,
+      workspace,
+      options.trustedWorkspaceKeys ?? {},
+    );
     const observedEvents = new Set(workspace.event_names);
     const observedProperties = new Set(workspace.property_names);
     const missingEvents = expectedEvents.filter(
@@ -568,6 +603,7 @@ export async function verifySetup(
       plan.workspace.public_key_fingerprint;
     const valid =
       evidenceWindowValid(workspace.observed_at, session, startedAt) &&
+      attestationValid &&
       workspace.verification_marker_matched &&
       fingerprintMatches &&
       missingEvents.length === 0 &&
@@ -580,10 +616,11 @@ export async function verifySetup(
         valid ? "pass" : "fail",
         valid
           ? "The selected workspace received every required signal for this session"
-          : "Workspace evidence is stale, incomplete, unmarked, or belongs to another workspace",
+          : "Workspace evidence is unattested, stale, incomplete, unmarked, or belongs to another workspace",
         workspace.observed_at,
         {
           fingerprint_matched: fingerprintMatches,
+          attestation_valid: attestationValid,
           marker_matched: workspace.verification_marker_matched,
           missing_events: missingEvents.length,
           missing_required_properties: missingProperties.length,
@@ -591,7 +628,7 @@ export async function verifySetup(
         },
         valid
           ? null
-          : "Query the selected workspace for the active verification marker and rerun missing journeys.",
+          : "Query the selected workspace for a signed active-session receipt and rerun missing journeys.",
       ),
     );
   }
@@ -604,6 +641,11 @@ export async function verifySetup(
   const acceptedWorkspace =
     evidence.workspace_receipt?.public_key_fingerprint ===
       plan.workspace.public_key_fingerprint &&
+    validWorkspaceAttestation(
+      session.session_id,
+      evidence.workspace_receipt,
+      options.trustedWorkspaceKeys ?? {},
+    ) &&
     evidence.workspace_receipt.verification_marker_matched &&
     evidenceWindowValid(
       evidence.workspace_receipt.observed_at,

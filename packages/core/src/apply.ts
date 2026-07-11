@@ -27,6 +27,7 @@ import { applyPatch } from "diff";
 
 import {
   digestSetupPlan,
+  fingerprintApprovalContext,
   fingerprintRepositoryRoot,
   verifyChangeApproval,
 } from "./approval.js";
@@ -339,6 +340,22 @@ export async function applyChanges(
   if (approval.repository_root_fingerprint !== rootFingerprint) {
     throw new Error("Approval does not match this repository root");
   }
+  const stateRecord = `${STATE_DIRECTORY}/${approval.approval_id}.json`;
+  const recordPath = join(root, stateRecord);
+  try {
+    await lstat(recordPath);
+    throw new Error("Approval has already been consumed");
+  } catch (error) {
+    if (!isErrno(error, "ENOENT")) throw error;
+  }
+  if (
+    approval.approval_context_digest !==
+    (await fingerprintApprovalContext(root, plan))
+  ) {
+    throw new Error(
+      "Repository package or check context changed after approval",
+    );
+  }
   if (Date.parse(approval.expires_at) <= startedAt.getTime()) {
     throw new Error("Approval has expired");
   }
@@ -350,16 +367,7 @@ export async function applyChanges(
     throw new Error("Approval references an unknown operation");
 
   const stateDirectory = await safeStateDirectory(root);
-  const stateRecord = `${STATE_DIRECTORY}/${approval.approval_id}.json`;
   const lockPath = join(stateDirectory, `${approval.approval_id}.lock`);
-  const recordPath = join(root, stateRecord);
-  if (
-    await lstat(recordPath)
-      .then(() => true)
-      .catch(() => false)
-  ) {
-    throw new Error("Approval has already been consumed");
-  }
   await writeFile(lockPath, JSON.stringify({ plan_digest: planDigest }), {
     flag: "wx",
     mode: 0o600,

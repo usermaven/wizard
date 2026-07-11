@@ -69,6 +69,13 @@ export const workspaceReceiptEvidenceSchema = z
     identified_user: z.boolean(),
     identified_company: z.boolean(),
     verification_marker_matched: z.boolean(),
+    attestation: z
+      .object({
+        algorithm: z.literal("ed25519"),
+        key_id: z.string().regex(/^[a-zA-Z0-9._-]{1,128}$/u),
+        signature: z.string().regex(/^[a-zA-Z0-9_-]{40,512}$/u),
+      })
+      .strict(),
   })
   .strict();
 

@@ -107,6 +107,7 @@ usermaven-wizard verification-session ./setup-plan.json \
 usermaven-wizard verify ./setup-plan.json \
   --session ./verification-session.json \
   --evidence ./verification-evidence.json \
+  --trusted-workspace-keys ./trusted-workspace-keys.json \
   --root /absolute/path/to/project
 ```
 
@@ -114,6 +115,8 @@ Verification independently checks exact local file state and combines
 short-lived marker-bound evidence from browser/E2E observation, collector
 responses, and the selected workspace. See the [verification
 playbook](docs/verification-playbook.md).
+Workspace receipts must carry a trusted-key Ed25519 attestation; normalized
+caller-supplied claims alone cannot produce a passing result.
 
 ## Checkpoint and resume
 
