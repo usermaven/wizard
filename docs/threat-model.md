@@ -26,6 +26,8 @@ network boundary. Output shown for human approval crosses a decision boundary.
 | Secret disclosure                                        | Deny known secret files, redact output, never return environment values, and keep source local by default.   |
 | Analytics-data leakage                                   | Verify using normalized names and outcomes; never persist or return raw payloads.                            |
 | Misleading inferred events                               | Keep baseline planning deterministic, attach rationale/confidence, require review, and do not infer revenue. |
+| Workspace key disclosure                                 | Accept only a key fingerprint and environment-variable name; reject raw key fields at contract boundaries.   |
+| Preview mistaken for execution                           | Label previews as non-executing and retain approval requirements on every mutation operation.                |
 | Wrong-workspace writes or reads                          | Display the selected workspace and public-key fingerprint; scope OAuth/session tokens to one workspace.      |
 | Dependency compromise                                    | Pin release tooling, publish with provenance, review lockfile changes, and minimize runtime dependencies.    |
 | Stale-plan overwrite                                     | Record and re-check file content hashes before applying an edit.                                             |

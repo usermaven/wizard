@@ -60,6 +60,7 @@ describe("public contracts", () => {
         display_name: "Example workspace",
         region: "us",
         public_key_fingerprint: "sha256:abcdef1234567890",
+        tracking_host: "https://events.example.com",
       },
       project: {
         framework: "next-app-router",
@@ -101,6 +102,7 @@ describe("public contracts", () => {
         display_name: "Example workspace",
         region: "us",
         public_key_fingerprint: "sha256:abcdef1234567890",
+        tracking_host: "https://events.example.com",
       },
       project: {
         framework: "vite-react",

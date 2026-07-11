@@ -8,7 +8,7 @@ import {
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.4.0";
+const WIZARD_VERSION = "0.5.0";
 
 export interface ProposeTrackingPlanOptions {
   now?: () => Date;
@@ -190,8 +190,8 @@ export function proposeTrackingPlan(
     ],
     events: [
       {
-        id: "baseline-page-view",
-        event_name: "page_view",
+        id: "baseline-pageview",
+        event_name: "pageview",
         description: "A visitor viewed an application page",
         business_question: "Which pages attract and retain visitors?",
         category: "engagement",

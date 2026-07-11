@@ -33,6 +33,11 @@ fingerprint. Operations are discriminated and reviewable. Package installation,
 file creation, and file editing require `requires_approval: true`. File paths are
 repository-relative and cannot traverse parent directories.
 
+Workspace setup input contains a tracking host, key fingerprint, and environment
+variable names. It never contains the public-key value. Change previews render
+typed operation content and explicitly mark previews containing repository source
+context; rendering does not execute an operation.
+
 ## Agent event stream
 
 Long-running commands emit one JSON object per line. Events include a run ID,

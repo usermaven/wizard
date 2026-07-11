@@ -44,7 +44,7 @@ describe("proposeTrackingPlan", () => {
     expect(trackingPlanSchema.safeParse(plan).success).toBe(true);
     expect(plan.plan_id).toBe("plan_test-12345678");
     expect(plan.created_at).toBe("2026-07-11T13:00:00.000Z");
-    expect(plan.events.map((event) => event.event_name)).toEqual(["page_view"]);
+    expect(plan.events.map((event) => event.event_name)).toEqual(["pageview"]);
     expect(plan.events.every((event) => !event.revenue)).toBe(true);
     expect(plan.identity[0]?.identifier).toBe("user_id");
     expect(plan.proposal?.review_required).toBe(true);

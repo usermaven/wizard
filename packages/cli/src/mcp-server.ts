@@ -2,14 +2,22 @@ import { realpath, stat } from "node:fs/promises";
 import { isAbsolute, resolve, sep, win32 } from "node:path";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { inspectProject, proposeTrackingPlan } from "@usermaven/wizard-core";
 import {
+  generateSetupPlan,
+  inspectProject,
+  previewChanges,
+  proposeTrackingPlan,
+} from "@usermaven/wizard-core";
+import {
+  changePreviewSchema,
   projectInspectionSchema,
+  setupPlanSchema,
   trackingPlanSchema,
+  workspacePublicConfigSchema,
 } from "@usermaven/wizard-schemas";
 import { z } from "zod";
 
-const SERVER_VERSION = "0.4.0";
+const SERVER_VERSION = "0.5.0";
 
 const projectPathSchema = z
   .string()
@@ -87,12 +95,12 @@ function toolError(error: unknown) {
   const message =
     error instanceof ScopedPathError
       ? error.message
-      : "Local inspection failed without returning repository contents";
+      : "Local read-only operation failed without returning repository contents";
   return {
     content: [
       {
         type: "text" as const,
-        text: JSON.stringify({ error: { code: "inspection_failed", message } }),
+        text: JSON.stringify({ error: { code: "operation_failed", message } }),
       },
     ],
     isError: true as const,
@@ -150,6 +158,56 @@ export async function createWizardMcpServer(
         const projectRoot = await resolveProjectPath(root, project_path);
         const inspection = await inspectProject(projectRoot);
         const result = proposeTrackingPlan(inspection);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "generate_setup_plan",
+    {
+      title: "Generate setup plan",
+      description:
+        "Create a typed, approval-ready Usermaven SDK setup plan using public workspace metadata and environment-variable names. Never accepts a workspace key value and never modifies files.",
+      inputSchema: {
+        project_path: projectPathSchema.optional(),
+        workspace: workspacePublicConfigSchema,
+      },
+      outputSchema: setupPlanSchema.shape,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ project_path, workspace }) => {
+      try {
+        const projectRoot = await resolveProjectPath(root, project_path);
+        const result = await generateSetupPlan({ projectRoot, workspace });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "preview_changes",
+    {
+      title: "Preview setup changes",
+      description:
+        "Render package commands, generated files, manual steps, and checks from a setup plan without executing any operation.",
+      inputSchema: { setup_plan: setupPlanSchema },
+      outputSchema: changePreviewSchema.shape,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ setup_plan }) => {
+      try {
+        const result = previewChanges(setup_plan);
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result,

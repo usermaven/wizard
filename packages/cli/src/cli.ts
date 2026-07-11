@@ -1,6 +1,14 @@
 #!/usr/bin/env node
 
-import { inspectProject, proposeTrackingPlan } from "@usermaven/wizard-core";
+import { readFile, stat } from "node:fs/promises";
+
+import {
+  generateSetupPlan,
+  inspectProject,
+  previewChanges,
+  proposeTrackingPlan,
+} from "@usermaven/wizard-core";
+import { setupPlanSchema } from "@usermaven/wizard-schemas";
 
 import { manifest } from "./manifest.js";
 
@@ -9,43 +17,125 @@ const help = `Usermaven Wizard (contract preview)
 Usage:
   usermaven-wizard inspect [path] [--compact]
   usermaven-wizard plan [path] [--compact]
+  usermaven-wizard setup-plan [path] --workspace-name <name> --region <region>
+    --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>
+    [--key-env-var <name>] [--tracking-host-env-var <name>] [--compact]
+  usermaven-wizard preview <setup-plan.json> [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
-Inspect and plan are read-only. Plan produces a deterministic page-view and user
-identity baseline that always requires review. Applying, verification, and local
-MCP commands will be implemented incrementally.`;
+All current commands are read-only. Setup plans contain approval-required
+operations, but generating or previewing a plan never executes them.`;
 
 const [command, ...flags] = process.argv.slice(2);
 
-async function main(): Promise<void> {
-  const compact = flags.includes("--compact");
-  const spacing = compact ? undefined : 2;
-  const unknownFlags = flags.filter(
-    (flag) => flag.startsWith("-") && flag !== "--compact",
-  );
-  if (unknownFlags.length > 0) {
-    throw new Error(`Unknown option: ${unknownFlags[0]}`);
+function parseArguments(arguments_: string[], allowedOptions: string[]) {
+  const options = new Map<string, string>();
+  const positionals: string[] = [];
+  let compact = false;
+  for (let index = 0; index < arguments_.length; index += 1) {
+    const argument = arguments_[index]!;
+    if (argument === "--compact") {
+      compact = true;
+    } else if (argument.startsWith("--")) {
+      if (!allowedOptions.includes(argument)) {
+        throw new Error(`Unknown option: ${argument}`);
+      }
+      const value = arguments_[index + 1];
+      if (!value || value.startsWith("--")) {
+        throw new Error(`${argument} requires a value`);
+      }
+      if (options.has(argument))
+        throw new Error(`${argument} may be provided only once`);
+      options.set(argument, value);
+      index += 1;
+    } else {
+      positionals.push(argument);
+    }
   }
+  return { compact, options, positionals };
+}
+
+function requiredOption(options: Map<string, string>, name: string): string {
+  const value = options.get(name);
+  if (!value) throw new Error(`${name} is required`);
+  return value;
+}
+
+async function main(): Promise<void> {
+  const parsed = parseArguments(
+    flags,
+    command === "setup-plan"
+      ? [
+          "--workspace-name",
+          "--region",
+          "--key-fingerprint",
+          "--tracking-host",
+          "--key-env-var",
+          "--tracking-host-env-var",
+        ]
+      : [],
+  );
+  const spacing = parsed.compact ? undefined : 2;
 
   if (command === "manifest") {
+    if (parsed.positionals.length > 0)
+      throw new Error("Manifest accepts no paths");
     process.stdout.write(`${JSON.stringify(manifest, null, spacing)}\n`);
     return;
   }
   if (command === "inspect") {
-    const paths = flags.filter((flag) => !flag.startsWith("-"));
-    if (paths.length > 1)
+    if (parsed.positionals.length > 1)
       throw new Error("Inspect accepts at most one project path");
-    const result = await inspectProject(paths[0] ?? process.cwd());
+    const result = await inspectProject(parsed.positionals[0] ?? process.cwd());
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
   if (command === "plan") {
-    const paths = flags.filter((flag) => !flag.startsWith("-"));
-    if (paths.length > 1)
+    if (parsed.positionals.length > 1)
       throw new Error("Plan accepts at most one project path");
-    const inspection = await inspectProject(paths[0] ?? process.cwd());
+    const inspection = await inspectProject(
+      parsed.positionals[0] ?? process.cwd(),
+    );
     const result = proposeTrackingPlan(inspection);
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "setup-plan") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Setup-plan accepts at most one project path");
+    const keyEnvVar = parsed.options.get("--key-env-var");
+    const trackingHostEnvVar = parsed.options.get("--tracking-host-env-var");
+    const result = await generateSetupPlan({
+      projectRoot: parsed.positionals[0] ?? process.cwd(),
+      workspace: {
+        display_name: requiredOption(parsed.options, "--workspace-name"),
+        region: requiredOption(parsed.options, "--region"),
+        public_key_fingerprint: requiredOption(
+          parsed.options,
+          "--key-fingerprint",
+        ),
+        tracking_host: requiredOption(parsed.options, "--tracking-host"),
+        ...(keyEnvVar ? { key_env_var: keyEnvVar } : {}),
+        ...(trackingHostEnvVar
+          ? { tracking_host_env_var: trackingHostEnvVar }
+          : {}),
+      },
+    });
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "preview") {
+    if (parsed.positionals.length !== 1)
+      throw new Error("Preview requires one setup-plan JSON path");
+    const planPath = parsed.positionals[0]!;
+    if ((await stat(planPath)).size > 5_000_000) {
+      throw new Error("Setup-plan JSON exceeds the 5 MB preview limit");
+    }
+    const plan = setupPlanSchema.parse(
+      JSON.parse(await readFile(planPath, "utf8")),
+    );
+    const result = previewChanges(plan);
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }

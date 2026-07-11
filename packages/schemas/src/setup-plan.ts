@@ -12,8 +12,16 @@ export const operationSchema = z.discriminatedUnion("type", [
   operationBase
     .extend({
       type: z.literal("install_package"),
-      package_name: z.string().min(1).max(214),
-      version_range: z.string().min(1).max(64),
+      package_name: z
+        .string()
+        .min(1)
+        .max(214)
+        .regex(/^(?:@[a-z0-9][a-z0-9._-]*\/)?[a-z0-9][a-z0-9._-]*$/iu),
+      version_range: z
+        .string()
+        .min(1)
+        .max(64)
+        .regex(/^[a-z0-9.*+^~<>=| -]+$/iu),
       dev: z.boolean().default(false),
       requires_approval: z.literal(true),
     })
@@ -61,17 +69,40 @@ export const plannedCheckSchema = z
   })
   .strict();
 
+export const workspacePublicConfigSchema = z
+  .object({
+    display_name: z.string().min(1).max(255),
+    region: z.string().min(1).max(32),
+    public_key_fingerprint: z.string().startsWith("sha256:").max(128),
+    tracking_host: z
+      .url()
+      .max(2_000)
+      .refine(
+        (value) =>
+          /^https:\/\//iu.test(value) ||
+          /^http:\/\/(?:localhost|127\.0\.0\.1|\[::1\])(?::|\/|$)/iu.test(
+            value,
+          ),
+        "tracking_host must use HTTPS unless it is a loopback development host",
+      ),
+    key_env_var: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]*$/u)
+      .max(128)
+      .optional(),
+    tracking_host_env_var: z
+      .string()
+      .regex(/^[A-Z][A-Z0-9_]*$/u)
+      .max(128)
+      .optional(),
+  })
+  .strict();
+
 export const setupPlanSchema = z
   .object({
     schema_version: schemaVersion,
     plan_id: z.string().min(8).max(128),
-    workspace: z
-      .object({
-        display_name: z.string().min(1).max(255),
-        region: z.string().min(1).max(32),
-        public_key_fingerprint: z.string().startsWith("sha256:").max(128),
-      })
-      .strict(),
+    workspace: workspacePublicConfigSchema,
     project: z
       .object({
         framework: z.string().min(1).max(128),
@@ -79,10 +110,10 @@ export const setupPlanSchema = z
         confidence: z.number().min(0).max(1),
       })
       .strict(),
-    operations: z.array(operationSchema),
+    operations: z.array(operationSchema).max(100),
     tracking_plan: trackingPlanSchema,
-    checks: z.array(plannedCheckSchema),
-    risks: z.array(z.string().min(1).max(2_000)),
+    checks: z.array(plannedCheckSchema).max(100),
+    risks: z.array(z.string().min(1).max(2_000)).max(100),
     created_at: isoDateTime,
     wizard_version: z.string().min(1).max(64),
   })
@@ -90,3 +121,4 @@ export const setupPlanSchema = z
 
 export type SetupOperation = z.infer<typeof operationSchema>;
 export type SetupPlan = z.infer<typeof setupPlanSchema>;
+export type WorkspacePublicConfig = z.infer<typeof workspacePublicConfigSchema>;

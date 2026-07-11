@@ -6,7 +6,9 @@ import { fileURLToPath } from "node:url";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
+  changePreviewSchema,
   projectInspectionSchema,
+  setupPlanSchema,
   trackingPlanSchema,
 } from "@usermaven/wizard-schemas";
 import { describe, expect, it } from "vitest";
@@ -34,6 +36,8 @@ describe("local MCP server", () => {
       expect(tools.map((tool) => tool.name)).toEqual([
         "inspect_project",
         "propose_tracking_plan",
+        "generate_setup_plan",
+        "preview_changes",
       ]);
       expect(
         tools.every(
@@ -80,7 +84,7 @@ describe("local MCP server", () => {
 
       expect(result.isError).not.toBe(true);
       expect(plan.events.map((event) => event.event_name)).toEqual([
-        "page_view",
+        "pageview",
       ]);
       expect(plan.proposal?.review_required).toBe(true);
       expect(plan.events.every((event) => event.revenue === false)).toBe(true);
@@ -100,6 +104,77 @@ describe("local MCP server", () => {
 
       expect(result.isError).toBe(true);
       expect(JSON.stringify(result)).not.toContain("/root/projects");
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("generates and previews an approval-ready setup plan", async () => {
+    const { client, server } = await connectedServer(fixtures);
+    try {
+      const generated = await client.callTool({
+        name: "generate_setup_plan",
+        arguments: {
+          project_path: "react-vite",
+          workspace: {
+            display_name: "Example workspace",
+            region: "us",
+            public_key_fingerprint: "sha256:abcdef1234567890",
+            tracking_host: "https://events.example.com",
+          },
+        },
+      });
+      const plan = setupPlanSchema.parse(generated.structuredContent);
+      const previewed = await client.callTool({
+        name: "preview_changes",
+        arguments: { setup_plan: plan },
+      });
+      const preview = changePreviewSchema.parse(previewed.structuredContent);
+
+      expect(generated.isError).not.toBe(true);
+      expect(previewed.isError).not.toBe(true);
+      expect(plan.operations).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: "install_package",
+            requires_approval: true,
+          }),
+          expect.objectContaining({
+            type: "create_file",
+            requires_approval: true,
+          }),
+        ]),
+      );
+      expect(preview.summary.mutations).toBe(2);
+      expect(JSON.stringify({ plan, preview })).not.toContain(
+        "actual-workspace-key",
+      );
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("rejects raw workspace keys at the protocol boundary", async () => {
+    const { client, server } = await connectedServer(fixtures);
+    try {
+      const result = await client.callTool({
+        name: "generate_setup_plan",
+        arguments: {
+          project_path: "react-vite",
+          workspace: {
+            display_name: "Example workspace",
+            region: "us",
+            public_key_fingerprint: "sha256:abcdef1234567890",
+            tracking_host: "https://events.example.com",
+            key: "actual-workspace-key",
+          },
+        },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).not.toContain("actual-workspace-key");
     } finally {
       await client.close();
       await server.close();

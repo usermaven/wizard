@@ -7,8 +7,9 @@ setup works. It is designed for both people and coding agents.
 > [!IMPORTANT]
 > This repository is under active development. Versioned contracts,
 > machine-readable manifests, bounded project inspection, and deterministic
-> baseline tracking plans, and a read-only local MCP server are implemented.
-> Repository mutation and end-to-end verification are not implemented yet.
+> baseline tracking plans, approval-ready setup plans, change previews, and a
+> read-only local MCP server are implemented. Repository mutation and end-to-end
+> verification are not implemented yet.
 
 ## Design promises
 
@@ -51,13 +52,29 @@ Baseline mode proposes page views, stable user identity, and shared deployment
 properties. Every item requires review. It deliberately does not invent custom
 business or revenue events from source-code keywords.
 
+## Generate and preview setup operations
+
+```sh
+usermaven-wizard setup-plan . \
+  --workspace-name "Example" \
+  --region us \
+  --key-fingerprint sha256:example \
+  --tracking-host https://events.example.com
+
+usermaven-wizard preview ./setup-plan.json
+```
+
+Setup generation references the public key through a framework-specific
+environment-variable name and never accepts its value. Previewing renders typed
+operations without installing packages, writing files, or running commands.
+
 ## Run the local MCP server
 
 ```sh
 node packages/cli/dist/mcp.js --root /absolute/path/to/project
 ```
 
-It exposes `inspect_project` and `propose_tracking_plan` over stdio. See the
+It exposes inspection, tracking-plan, setup-plan, and preview tools over stdio. See the
 [local MCP development playbook](docs/local-mcp.md) for client configuration,
 security boundaries, and troubleshooting.
 

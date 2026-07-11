@@ -1,0 +1,165 @@
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+import { setupPlanSchema } from "@usermaven/wizard-schemas";
+import { afterEach, describe, expect, it } from "vitest";
+
+import { previewChanges } from "./change-preview.js";
+import { generateSetupPlan } from "./setup-plan.js";
+
+const fixtures = fileURLToPath(new URL("../../../fixtures/", import.meta.url));
+const temporaryRoots: string[] = [];
+const now = () => new Date("2026-07-11T14:00:00Z");
+const options = {
+  now,
+  idFactory: () => "setup-test-1234",
+  trackingPlanIdFactory: () => "tracking-test-1234",
+};
+const workspace = {
+  display_name: "Example workspace",
+  region: "us",
+  public_key_fingerprint: "sha256:abcdef1234567890",
+  tracking_host: "https://events.example.com",
+};
+
+afterEach(async () => {
+  await Promise.all(
+    temporaryRoots.splice(0).map((root) => rm(root, { recursive: true })),
+  );
+});
+
+describe("generateSetupPlan", () => {
+  it("generates an approval-ready React/Vite plan without a key value", async () => {
+    const plan = await generateSetupPlan(
+      { projectRoot: join(fixtures, "react-vite"), workspace },
+      options,
+    );
+
+    expect(setupPlanSchema.safeParse(plan).success).toBe(true);
+    expect(plan.workspace.key_env_var).toBe("VITE_USERMAVEN_KEY");
+    expect(plan.operations.map((operation) => operation.type)).toEqual([
+      "install_package",
+      "create_file",
+      "manual_step",
+      "manual_step",
+      "manual_step",
+      "run_check",
+    ]);
+    expect(
+      plan.operations.find((operation) => operation.type === "create_file"),
+    ).toMatchObject({
+      path: "src/usermaven.ts",
+      requires_approval: true,
+    });
+    const serialized = JSON.stringify(plan);
+    expect(serialized).toContain("VITE_USERMAVEN_KEY");
+    expect(serialized).not.toContain("actual-workspace-key");
+    expect(
+      plan.operations.filter((operation) => operation.requires_approval),
+    ).toHaveLength(3);
+  });
+
+  it("uses Next.js public environment names and an App Router target", async () => {
+    const plan = await generateSetupPlan(
+      { projectRoot: join(fixtures, "next-app-router"), workspace },
+      options,
+    );
+    const create = plan.operations.find(
+      (operation) => operation.type === "create_file",
+    );
+
+    expect(plan.workspace.key_env_var).toBe("NEXT_PUBLIC_USERMAVEN_KEY");
+    expect(create).toMatchObject({ path: "app/usermaven-client.ts" });
+    expect(create && "content" in create ? create.content : "").toContain(
+      '"use client"',
+    );
+  });
+
+  it("never overwrites an existing deterministic target", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-setup-"));
+    temporaryRoots.push(root);
+    await mkdir(join(root, "src"));
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ dependencies: { react: "19.2.7", vite: "8.1.4" } }),
+    );
+    await writeFile(
+      join(root, "src", "usermaven.ts"),
+      "private customer source",
+    );
+
+    const plan = await generateSetupPlan(
+      { projectRoot: root, workspace },
+      options,
+    );
+
+    expect(
+      plan.operations.some((operation) => operation.type === "create_file"),
+    ).toBe(false);
+    expect(plan.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "review-existing-client-file",
+          type: "manual_step",
+        }),
+      ]),
+    );
+    expect(JSON.stringify(plan)).not.toContain("private customer source");
+  });
+
+  it("rejects workspace objects containing a raw key", async () => {
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: join(fixtures, "react-vite"),
+          workspace: {
+            ...workspace,
+            key: "actual-workspace-key",
+          } as typeof workspace,
+        },
+        options,
+      ),
+    ).rejects.toThrow();
+  });
+
+  it("rejects a remote plaintext tracking host", async () => {
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: join(fixtures, "react-vite"),
+          workspace: {
+            ...workspace,
+            tracking_host: "http://events.example.com",
+          },
+        },
+        options,
+      ),
+    ).rejects.toThrow("tracking_host must use HTTPS");
+  });
+});
+
+describe("previewChanges", () => {
+  it("renders every operation without executing it", async () => {
+    const plan = await generateSetupPlan(
+      { projectRoot: join(fixtures, "react-vite"), workspace },
+      options,
+    );
+    const preview = previewChanges(plan);
+
+    expect(preview.summary).toEqual({
+      total: 6,
+      mutations: 2,
+      manual_steps: 3,
+      checks: 1,
+    });
+    expect(preview.items[0]?.preview).toBe(
+      "npm install @usermaven/sdk-js@^1.5.15",
+    );
+    expect(
+      preview.items.find((item) => item.type === "create_file")?.preview,
+    ).toContain("usermavenClient");
+    expect(preview.warnings.join(" ")).toContain("no package, file, command");
+  });
+});

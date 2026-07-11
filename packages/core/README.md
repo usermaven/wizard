@@ -23,3 +23,13 @@ const plan = proposeTrackingPlan(result);
 
 Baseline mode proposes page views and user identity only. It does not infer
 custom business or revenue events.
+
+The core can also generate typed, approval-ready SDK setup plans and render them
+without executing operations:
+
+```ts
+import { generateSetupPlan, previewChanges } from "@usermaven/wizard-core";
+
+const setup = await generateSetupPlan({ projectRoot, workspace });
+const preview = previewChanges(setup);
+```

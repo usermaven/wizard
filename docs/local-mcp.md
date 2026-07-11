@@ -1,10 +1,12 @@
 # Local MCP development playbook
 
 The Usermaven Wizard MCP server runs as a local child process over stdio. It has
-no listening port and makes no remote Usermaven calls. Version `0.4.0` exposes:
+no listening port and makes no remote Usermaven calls. Version `0.5.0` exposes:
 
 - `inspect_project`: normalized framework and analytics evidence
 - `propose_tracking_plan`: a deterministic, review-required baseline plan
+- `generate_setup_plan`: typed SDK installation and integration operations
+- `preview_changes`: rendered operations with no execution
 
 Both tools are read-only, non-destructive, idempotent, and confined to one root
 selected when the process starts.
@@ -41,12 +43,13 @@ Most desktop and editor clients accept a configuration shaped like this:
 ```
 
 Restart or reload the client after changing its MCP configuration. The client
-should discover exactly `inspect_project` and `propose_tracking_plan`.
+should discover exactly `inspect_project`, `propose_tracking_plan`,
+`generate_setup_plan`, and `preview_changes`.
 
 After the npm package is published, the equivalent command will be:
 
 ```sh
-npx -y -p @usermaven/wizard@0.4.0 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.5.0 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 
@@ -75,8 +78,9 @@ escape rejection.
 - Source and repository text are treated as untrusted data.
 - Results contain normalized tokens and locations, never snippets, environment
   values, raw analytics payloads, or secrets.
-- No tool currently installs packages, edits files, opens a browser, or contacts
-  the remote Usermaven MCP.
+- Setup plans and previews contain approval-required mutation operations, but no
+  current tool installs packages, edits files, opens a browser, or contacts the
+  remote Usermaven MCP.
 
 ## Troubleshooting
 

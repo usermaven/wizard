@@ -32,17 +32,21 @@ installation sessions.
 2. `plan` converts normalized inspection evidence into a versioned,
    deterministic tracking baseline. Phase 1 proposes page views and user
    identity only, records assumptions and warnings, and makes no changes.
-3. `preview` renders each proposed operation and diff.
-4. `apply` accepts an approval identifier and an exact operation set. It rejects
+3. `setup-plan` binds public workspace metadata, inspection, and the tracking
+   baseline into typed install/create/manual/check operations. It accepts an
+   environment-variable name and key fingerprint, never the public-key value.
+4. `preview` renders each proposed operation and diff without executing it.
+5. `apply` accepts an approval identifier and an exact operation set. It rejects
    stale file hashes, paths outside the repository, and unapproved operations.
-5. `verify` runs static, runtime, transport, and workspace-receipt checks. It
+6. `verify` runs static, runtime, transport, and workspace-receipt checks. It
    reports names and outcomes, not raw values.
 
 ## Local MCP surface
 
-The local stdio MCP server currently exposes `inspect_project` and
-`propose_tracking_plan`. Both are read-only and confined to a canonical root
-chosen when the process starts. The manifest marks future tools as planned.
+The local stdio MCP server currently exposes `inspect_project`,
+`propose_tracking_plan`, `generate_setup_plan`, and `preview_changes`. All are
+read-only and confined to a canonical root chosen when the process starts. The
+manifest marks future tools as planned.
 `apply_changes` will be agent-safe only in the sense that it is structured and
 bounded; it will still require explicit human approval.
 

@@ -23,6 +23,11 @@ describe("CLI manifest", () => {
       manifest.local_mcp_tools
         .filter((tool) => tool.availability === "implemented")
         .map((tool) => tool.name),
-    ).toEqual(["inspect_project", "propose_tracking_plan"]);
+    ).toEqual([
+      "inspect_project",
+      "propose_tracking_plan",
+      "generate_setup_plan",
+      "preview_changes",
+    ]);
   });
 });

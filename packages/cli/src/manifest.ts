@@ -32,7 +32,7 @@ const mutating = (
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.4.0",
+  version: "0.5.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -43,6 +43,16 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     readOnly(
       "plan",
       "Generate a deterministic baseline tracking plan without changing files.",
+      "implemented",
+    ),
+    readOnly(
+      "setup-plan",
+      "Generate an approval-ready SDK setup plan without changing files.",
+      "implemented",
+    ),
+    readOnly(
+      "preview",
+      "Render a saved setup plan without executing its operations.",
       "implemented",
     ),
     mutating("apply", "Apply explicitly approved package and file operations."),
@@ -65,10 +75,15 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Propose versioned identity, event, and property contracts.",
       "implemented",
     ),
-    readOnly("generate_setup_plan", "Create an approval-ready setup plan."),
+    readOnly(
+      "generate_setup_plan",
+      "Create an approval-ready setup plan.",
+      "implemented",
+    ),
     readOnly(
       "preview_changes",
       "Render proposed repository changes without applying them.",
+      "implemented",
     ),
     mutating(
       "apply_changes",
