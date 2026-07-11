@@ -6,9 +6,9 @@ setup works. It is designed for both people and coding agents.
 
 > [!IMPORTANT]
 > This repository is under active development. Versioned contracts,
-> machine-readable manifests, and bounded read-only project inspection are
-> implemented. Repository mutation, local MCP, and end-to-end verification are
-> not implemented yet.
+> machine-readable manifests, bounded project inspection, and deterministic
+> baseline tracking plans are implemented. Repository mutation, local MCP, and
+> end-to-end verification are not implemented yet.
 
 ## Design promises
 
@@ -27,8 +27,8 @@ setup works. It is designed for both people and coding agents.
   plans, project inspections, verification results, agent NDJSON events, and the
   command manifest.
 - `@usermaven/wizard-core`: reusable local inspection and planning engine.
-- `@usermaven/wizard`: the CLI and future local MCP server. `inspect` and
-  `manifest` are currently executable.
+- `@usermaven/wizard`: the CLI and future local MCP server. `inspect`, `plan`,
+  and `manifest` are currently executable.
 
 ## Inspect a project
 
@@ -41,6 +41,16 @@ dependencies, and recognized instrumentation calls. Its JSON output contains
 normalized tokens and locations—not source snippets, property values, secrets,
 or event bodies.
 
+## Propose a baseline tracking plan
+
+```sh
+npx @usermaven/wizard plan .
+```
+
+Baseline mode proposes page views, stable user identity, and shared deployment
+properties. Every item requires review. It deliberately does not invent custom
+business or revenue events from source-code keywords.
+
 ## Development
 
 Requires Node.js 20 or newer.
@@ -51,6 +61,7 @@ npm run check
 npm run --workspace @usermaven/wizard build
 node packages/cli/dist/cli.js manifest
 node packages/cli/dist/cli.js inspect fixtures/react-vite
+node packages/cli/dist/cli.js plan fixtures/react-vite
 ```
 
 Start with [the architecture](docs/architecture.md),

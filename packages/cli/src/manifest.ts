@@ -22,7 +22,7 @@ const mutating = (name: string, description: string) => ({
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.2.0",
+  version: "0.3.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -31,7 +31,7 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     ),
     readOnly(
       "plan",
-      "Generate a setup and tracking plan without changing files.",
+      "Generate a deterministic baseline tracking plan without changing files.",
     ),
     mutating("apply", "Apply explicitly approved package and file operations."),
     readOnly("verify", "Run static, runtime, transport, and receipt checks."),

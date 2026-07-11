@@ -9,6 +9,14 @@ import {
   statusSchema,
 } from "./common.js";
 
+export const proposalBasisSchema = z
+  .object({
+    confidence: z.number().min(0).max(1),
+    rationale: z.array(z.string().min(1).max(1_000)).min(1).max(10),
+    review_required: z.literal(true),
+  })
+  .strict();
+
 export const propertyDefinitionSchema = z
   .object({
     name: z.string().min(1).max(128),
@@ -45,6 +53,7 @@ export const identityItemSchema = z
     trigger: triggerSchema,
     properties: z.array(propertyDefinitionSchema),
     status: statusSchema,
+    proposal: proposalBasisSchema.optional(),
   })
   .strict();
 
@@ -70,6 +79,7 @@ export const eventCandidateSchema = z
     owner: z.string().min(1).max(256).nullable(),
     status: statusSchema,
     revenue: z.boolean().default(false),
+    proposal: proposalBasisSchema.optional(),
   })
   .strict()
   .superRefine((event, context) => {
@@ -102,11 +112,28 @@ export const trackingPlanSchema = z
     identity: z.array(identityItemSchema),
     events: z.array(eventCandidateSchema),
     shared_properties: z.array(propertyDefinitionSchema),
+    proposal: z
+      .object({
+        mode: z.literal("deterministic_baseline"),
+        review_required: z.literal(true),
+        assumptions: z.array(z.string().min(1).max(1_000)).max(50),
+        warnings: z.array(z.string().min(1).max(1_000)).max(50),
+        source: z
+          .object({
+            framework: z.string().min(1).max(128),
+            inspected_at: isoDateTime,
+            inspection_truncated: z.boolean(),
+          })
+          .strict(),
+      })
+      .strict()
+      .optional(),
     created_at: isoDateTime,
     wizard_version: z.string().min(1).max(64),
   })
   .strict();
 
 export type PropertyDefinition = z.infer<typeof propertyDefinitionSchema>;
+export type ProposalBasis = z.infer<typeof proposalBasisSchema>;
 export type EventCandidate = z.infer<typeof eventCandidateSchema>;
 export type TrackingPlan = z.infer<typeof trackingPlanSchema>;

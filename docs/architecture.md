@@ -29,7 +29,9 @@ installation sessions.
    instrumentation calls. It scans an allowlisted set of source extensions,
    skips symlinks and generated/dependency directories, enforces file and byte
    limits, and returns normalized project facts without source snippets.
-2. `plan` produces versioned tracking and setup plans. It makes no changes.
+2. `plan` converts normalized inspection evidence into a versioned,
+   deterministic tracking baseline. Phase 1 proposes page views and user
+   identity only, records assumptions and warnings, and makes no changes.
 3. `preview` renders each proposed operation and diff.
 4. `apply` accepts an approval identifier and an exact operation set. It rejects
    stale file hashes, paths outside the repository, and unapproved operations.

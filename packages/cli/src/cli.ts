@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 
-import { inspectProject } from "@usermaven/wizard-core";
+import { inspectProject, proposeTrackingPlan } from "@usermaven/wizard-core";
 
 import { manifest } from "./manifest.js";
 
@@ -8,11 +8,13 @@ const help = `Usermaven Wizard (contract preview)
 
 Usage:
   usermaven-wizard inspect [path] [--compact]
+  usermaven-wizard plan [path] [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
-Inspect is read-only and returns normalized project evidence. Planning, applying,
-verification, and local MCP commands will be implemented incrementally.`;
+Inspect and plan are read-only. Plan produces a deterministic page-view and user
+identity baseline that always requires review. Applying, verification, and local
+MCP commands will be implemented incrementally.`;
 
 const [command, ...flags] = process.argv.slice(2);
 
@@ -35,6 +37,15 @@ async function main(): Promise<void> {
     if (paths.length > 1)
       throw new Error("Inspect accepts at most one project path");
     const result = await inspectProject(paths[0] ?? process.cwd());
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "plan") {
+    const paths = flags.filter((flag) => !flag.startsWith("-"));
+    if (paths.length > 1)
+      throw new Error("Plan accepts at most one project path");
+    const inspection = await inspectProject(paths[0] ?? process.cwd());
+    const result = proposeTrackingPlan(inspection);
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
