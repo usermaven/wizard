@@ -16,6 +16,10 @@ export {
 } from "./approval.js";
 export {
   applyChanges,
+  inspectApplyLock,
+  recoverStaleApplyLock,
+  type ApplyLockOptions,
+  type ApplyLockStatus,
   type ApplyChangesInput,
   type ApplyChangesOptions,
   type CommandRunner,
@@ -43,6 +47,7 @@ export {
 export {
   resumeWorkflow,
   saveWorkflowCheckpoint,
+  startGuidedSetup,
   type SaveWorkflowCheckpointInput,
   type WorkflowOptions,
 } from "./workflow.js";

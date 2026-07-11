@@ -4,6 +4,18 @@ import {
   type WizardManifest,
 } from "@usermaven/wizard-schemas";
 
+export const MCP_TOOLS = {
+  inspectProject: "inspect_project",
+  checkpointWorkflow: "checkpoint_workflow",
+  resumeWorkflow: "resume_workflow",
+  proposeTrackingPlan: "propose_tracking_plan",
+  generateSetupPlan: "generate_setup_plan",
+  previewChanges: "preview_changes",
+  applyChanges: "apply_changes",
+  prepareVerification: "prepare_verification",
+  verifySetup: "verify_setup",
+} as const;
+
 const readOnly = (
   name: string,
   description: string,
@@ -104,6 +116,16 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Validate workflow state and print the exact next command.",
       "implemented",
     ),
+    readOnly(
+      "apply-lock",
+      "Inspect one apply lock, owning-process state, and safe recovery eligibility.",
+      "implemented",
+    ),
+    localState(
+      "recover-lock",
+      "Convert a stale orphaned apply lock into a terminal consumed record without replaying it.",
+      false,
+    ),
     readOnly("doctor", "Diagnose configuration and connectivity problems."),
     readOnly(
       "manifest",
@@ -113,45 +135,45 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
   ],
   local_mcp_tools: [
     readOnly(
-      "inspect_project",
+      MCP_TOOLS.inspectProject,
       "Inspect the local project and return normalized facts.",
       "implemented",
     ),
     localState(
-      "checkpoint_workflow",
+      MCP_TOOLS.checkpointWorkflow,
       "Persist bounded workflow metadata and artifact digests.",
     ),
     readOnly(
-      "resume_workflow",
+      MCP_TOOLS.resumeWorkflow,
       "Validate checkpoint recovery state and return the next action.",
       "implemented",
     ),
     readOnly(
-      "propose_tracking_plan",
+      MCP_TOOLS.proposeTrackingPlan,
       "Propose versioned identity, event, and property contracts.",
       "implemented",
     ),
     localState(
-      "generate_setup_plan",
+      MCP_TOOLS.generateSetupPlan,
       "Create approval-ready SDK and source-aware AI instrumentation operations.",
     ),
     readOnly(
-      "preview_changes",
+      MCP_TOOLS.previewChanges,
       "Render proposed repository changes without applying them.",
       "implemented",
     ),
     mutating(
-      "apply_changes",
+      MCP_TOOLS.applyChanges,
       "Apply only the operations covered by explicit approval.",
       "implemented",
     ),
     readOnly(
-      "prepare_verification",
+      MCP_TOOLS.prepareVerification,
       "Create a short-lived marker session for evidence collection.",
       "implemented",
     ),
     readOnly(
-      "verify_setup",
+      MCP_TOOLS.verifySetup,
       "Verify setup without returning raw analytics payloads.",
       "implemented",
     ),

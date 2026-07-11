@@ -219,6 +219,45 @@ describe("public contracts", () => {
     expect(result.success).toBe(false);
   });
 
+  it("enforces verification cross-field invariants at runtime", () => {
+    const base = {
+      schema_version: "1",
+      session_id: "session_12345678",
+      plan_id: "plan_12345678",
+      environment: "development",
+      sdk_version: null,
+      started_at: "2026-07-11T10:00:00Z",
+      completed_at: "2026-07-11T10:01:00Z",
+      outcome: "pass",
+      checks: [
+        {
+          id: "runtime",
+          layer: "runtime",
+          outcome: "fail",
+          summary: "Runtime failed",
+          observed_at: "2026-07-11T10:00:30Z",
+          normalized_details: {},
+          suggested_fix: "Retry",
+        },
+      ],
+      received: {
+        event_names: [],
+        property_names: [],
+        identified_user: false,
+        identified_company: false,
+      },
+    };
+
+    expect(verificationResultSchema.safeParse(base).success).toBe(false);
+    expect(
+      verificationResultSchema.safeParse({
+        ...base,
+        outcome: "fail",
+        completed_at: "2026-07-11T09:59:00Z",
+      }).success,
+    ).toBe(false);
+  });
+
   it("keeps verification evidence normalized and sessions short-lived", () => {
     expect(
       verificationEvidenceSchema.safeParse({

@@ -22,12 +22,16 @@ import {
   digestSetupPlan,
   generateSetupPlan,
   inspectProject,
+  inspectApplyLock,
+  loadChangeApproval,
   loadSetupPlanArtifact,
   previewChanges,
+  recoverStaleApplyLock,
   resumeWorkflow,
   saveWorkflowCheckpoint,
   storeChangeApproval,
   storeSetupPlanArtifact,
+  startGuidedSetup,
   verifySetup,
 } from "@usermaven/wizard-core";
 import {
@@ -42,6 +46,7 @@ import {
 } from "@usermaven/wizard-schemas";
 
 import { manifest } from "./manifest.js";
+import { integerOption, parseArguments } from "./arguments.js";
 
 const help = `Usermaven Wizard
 
@@ -59,7 +64,7 @@ Usage:
     --operations <id,id> [--root <path>]
     [--ttl-minutes <1-60>] [--output <approval.json>]
   usermaven-wizard apply [<setup-plan.json> | --plan-digest <digest>]
-    --approval <approval.json>
+    (--approval <approval.json> | --approval-id <id>)
     [--root <path>] [--compact]
   usermaven-wizard verification-session [<setup-plan.json> | --plan-digest <digest>]
     --environment <name> [--ttl-minutes <1-60>] [--compact]
@@ -73,6 +78,9 @@ Usage:
   usermaven-wizard resume [path] --workflow-id <id> [--compact]
   usermaven-wizard setup [path] [--compact]
   usermaven-wizard next [path] --workflow-id <id> [--compact]
+  usermaven-wizard apply-lock [path] --approval-id <id> [--compact]
+  usermaven-wizard recover-lock [path] --approval-id <id>
+    --confirm "RECOVER <id>" [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
@@ -81,52 +89,6 @@ terminal confirmation. Apply executes only the exact operations bound to that
 unexpired approval artifact.`;
 
 const [command, ...flags] = process.argv.slice(2);
-
-function parseArguments(arguments_: string[], allowedOptions: string[]) {
-  const options = new Map<string, string>();
-  const positionals: string[] = [];
-  let compact = false;
-  for (let index = 0; index < arguments_.length; index += 1) {
-    const argument = arguments_[index]!;
-    if (argument === "--compact") {
-      compact = true;
-    } else if (argument.startsWith("--")) {
-      const equals = argument.indexOf("=");
-      const option = equals < 0 ? argument : argument.slice(0, equals);
-      if (!allowedOptions.includes(option)) {
-        throw new Error(`Unknown option: ${option}`);
-      }
-      const inlineValue = equals < 0 ? undefined : argument.slice(equals + 1);
-      const value = inlineValue ?? arguments_[index + 1];
-      if (!value || (inlineValue === undefined && value.startsWith("--"))) {
-        throw new Error(`${option} requires a value`);
-      }
-      if (options.has(option))
-        throw new Error(`${option} may be provided only once`);
-      options.set(option, value);
-      if (inlineValue === undefined) index += 1;
-    } else {
-      positionals.push(argument);
-    }
-  }
-  return { compact, options, positionals };
-}
-
-function integerOption(
-  options: Map<string, string>,
-  name: string,
-  fallback: number,
-  minimum: number,
-  maximum: number,
-): number {
-  const raw = options.get(name) ?? String(fallback);
-  if (!/^\d+$/u.test(raw))
-    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
-  const value = Number(raw);
-  if (!Number.isSafeInteger(value) || value < minimum || value > maximum)
-    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
-  return value;
-}
 
 async function writePrivateOutput(
   path: string,
@@ -228,7 +190,7 @@ async function main(): Promise<void> {
               "--plan-digest",
             ]
           : command === "apply"
-            ? ["--root", "--approval", "--plan-digest"]
+            ? ["--root", "--approval", "--approval-id", "--plan-digest"]
             : command === "verification-session"
               ? ["--environment", "--ttl-minutes", "--root", "--plan-digest"]
               : command === "verify"
@@ -256,7 +218,11 @@ async function main(): Promise<void> {
                       ? ["--workflow-id"]
                       : command === "next"
                         ? ["--workflow-id"]
-                        : [];
+                        : command === "apply-lock"
+                          ? ["--approval-id"]
+                          : command === "recover-lock"
+                            ? ["--approval-id", "--confirm"]
+                            : [];
   const parsed = parseArguments(flags, allowedOptions);
   const spacing = parsed.compact ? undefined : 2;
 
@@ -413,11 +379,16 @@ async function main(): Promise<void> {
       parsed.options,
       "Apply",
     );
-    const approval = changeApprovalSchema.parse(
-      await readJson(requiredOption(parsed.options, "--approval"), 1_000_000),
-    );
+    const approvalPath = parsed.options.get("--approval");
+    const approvalId = parsed.options.get("--approval-id");
+    if ((approvalPath ? 1 : 0) + (approvalId ? 1 : 0) !== 1)
+      throw new Error("Apply requires exactly one --approval or --approval-id");
+    const root = parsed.options.get("--root") ?? process.cwd();
+    const approval = approvalId
+      ? await loadChangeApproval(root, approvalId)
+      : changeApprovalSchema.parse(await readJson(approvalPath!, 1_000_000));
     const result = await applyChanges({
-      projectRoot: parsed.options.get("--root") ?? process.cwd(),
+      projectRoot: root,
       plan,
       approval,
     });
@@ -522,16 +493,10 @@ async function main(): Promise<void> {
   if (command === "setup") {
     if (parsed.positionals.length > 1)
       throw new Error("Setup accepts at most one project path");
-    const projectRoot = parsed.positionals[0] ?? process.cwd();
-    const inspection = await inspectProject(projectRoot);
-    const checkpoint = await saveWorkflowCheckpoint({
-      projectRoot,
-      completedStep: "inspection_completed",
-    });
-    const next = await resumeWorkflow(projectRoot, checkpoint.workflow_id);
-    process.stdout.write(
-      `${JSON.stringify({ inspection, checkpoint, next }, null, spacing)}\n`,
+    const result = await startGuidedSetup(
+      parsed.positionals[0] ?? process.cwd(),
     );
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
   if (command === "next") {
@@ -540,6 +505,27 @@ async function main(): Promise<void> {
     const result = await resumeWorkflow(
       parsed.positionals[0] ?? process.cwd(),
       requiredOption(parsed.options, "--workflow-id"),
+    );
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "apply-lock") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Apply-lock accepts at most one project path");
+    const result = await inspectApplyLock(
+      parsed.positionals[0] ?? process.cwd(),
+      requiredOption(parsed.options, "--approval-id"),
+    );
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "recover-lock") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Recover-lock accepts at most one project path");
+    const result = await recoverStaleApplyLock(
+      parsed.positionals[0] ?? process.cwd(),
+      requiredOption(parsed.options, "--approval-id"),
+      requiredOption(parsed.options, "--confirm"),
     );
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;

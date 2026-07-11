@@ -1,7 +1,11 @@
 import { z } from "zod";
 
-import { isoDateTime, relativePath, schemaVersion } from "./common.js";
-import { sha256DigestSchema } from "./apply.js";
+import {
+  isoDateTime,
+  relativePath,
+  schemaVersion,
+  sha256DigestSchema,
+} from "./common.js";
 
 export const workflowStepSchema = z.enum([
   "inspection_completed",

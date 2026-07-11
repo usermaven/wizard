@@ -356,7 +356,11 @@ export async function generateSetupPlan(
     )
   ) {
     throw new Error(
-      `Unsupported framework for browser setup: ${inspection.project.framework}`,
+      `Unsupported framework for browser setup: ${
+        inspection.unsupported_frameworks.length > 0
+          ? inspection.unsupported_frameworks.join(", ")
+          : inspection.project.framework
+      }`,
     );
   }
   const trackingPlan = trackingPlanSchema.parse(input.trackingPlan);
@@ -496,7 +500,7 @@ export async function generateSetupPlan(
     id: "configure-public-environment",
     type: "manual_step",
     summary: "Configure the selected workspace public environment values",
-    instructions: `Set ${workspace.key_env_var} to the selected workspace public key and ${workspace.tracking_host_env_var} to ${workspace.tracking_host}. Do not commit populated environment files.`,
+    instructions: `Set ${workspace.key_env_var} to the selected workspace public key and ${workspace.tracking_host_env_var} to ${workspace.tracking_host}. Safe .env.example placeholders are ${workspace.key_env_var}= and ${workspace.tracking_host_env_var}=${workspace.tracking_host}. Do not commit populated environment files.`,
     requires_approval: false,
   });
 

@@ -1,4 +1,9 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { cp, mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import {
+  createHash,
+  generateKeyPairSync,
+  sign as signPayload,
+} from "node:crypto";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,7 +18,14 @@ import { applyPatch } from "diff";
 import { JsxEmit, ModuleKind, ScriptTarget, transpileModule } from "typescript";
 
 import { previewChanges } from "./change-preview.js";
+import { applyChanges } from "./apply.js";
+import { createChangeApproval } from "./approval.js";
 import { generateSetupPlan } from "./setup-plan.js";
+import {
+  createVerificationSession,
+  verifySetup,
+  workspaceReceiptAttestationPayload,
+} from "./verify.js";
 
 const fixtures = fileURLToPath(new URL("../../../fixtures/", import.meta.url));
 const temporaryRoots: string[] = [];
@@ -125,6 +137,235 @@ afterEach(async () => {
 });
 
 describe("generateSetupPlan", () => {
+  it("applies, executes, observes, and verifies a real event on a supported fixture", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-runtime-e2e-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "next-app-router"), root, { recursive: true });
+    const requests: Array<{
+      event: string;
+      properties: Record<string, string>;
+    }> = [];
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = async (_input, init) => {
+      requests.push(JSON.parse(String(init?.body)));
+      return new Response(null, { status: 202 });
+    };
+    try {
+      const trackingHost = "https://collector.test.example";
+      const nextTrackingPlan = trackingPlanSchema.parse({
+        ...trackingPlan,
+        proposal: {
+          ...trackingPlan.proposal,
+          source: {
+            ...trackingPlan.proposal!.source,
+            framework: "next-app-router",
+          },
+        },
+      });
+      const proposal = instrumentationProposal(
+        nextTrackingPlan,
+        "app/generated-usermaven-tracking.ts",
+      );
+      const runtimeChange = proposal.changes[0]!;
+      if (runtimeChange.type !== "create_file")
+        throw new Error("Expected runtime fixture create operation");
+      runtimeChange.content = `import { usermaven, usermavenVerificationProperties } from "./usermaven-provider";
+
+export async function emitLinkCreated() {
+  return usermaven?.track("link_created", usermavenVerificationProperties());
+}
+`;
+      const plan = await generateSetupPlan(
+        {
+          projectRoot: root,
+          workspace: { ...workspace, tracking_host: trackingHost },
+          trackingPlan: nextTrackingPlan,
+          instrumentationProposal: proposal,
+        },
+        {
+          now: () => new Date("2026-07-11T14:00:00.000Z"),
+          idFactory: () => "runtime-e2e-1234",
+        },
+      );
+      const operationIds = plan.operations
+        .filter((operation) => operation.requires_approval)
+        .map((operation) => operation.id);
+      const approval = await createChangeApproval(
+        {
+          plan,
+          projectRoot: root,
+          operationIds,
+          confirmedByInteractiveUser: true,
+        },
+        { now: () => new Date("2026-07-11T14:01:00.000Z") },
+      );
+      const applied = await applyChanges(
+        { projectRoot: root, plan, approval },
+        {
+          now: () => new Date("2026-07-11T14:02:00.000Z"),
+          commandRunner: async (command) => {
+            if (command.command === "npm" && command.args[0] === "install") {
+              const packageJson = JSON.parse(
+                await readFile(join(root, "package.json"), "utf8"),
+              );
+              packageJson.dependencies["@usermaven/sdk-js"] = "1.5.15";
+              await writeFile(
+                join(root, "package.json"),
+                JSON.stringify(packageJson),
+              );
+              const sdk = join(root, "node_modules", "@usermaven", "sdk-js");
+              await mkdir(sdk, { recursive: true });
+              await writeFile(
+                join(sdk, "package.json"),
+                JSON.stringify({
+                  name: "@usermaven/sdk-js",
+                  version: "1.5.15",
+                  type: "module",
+                  exports: "./index.js",
+                }),
+              );
+              await writeFile(
+                join(sdk, "index.js"),
+                `export function usermavenClient({ trackingHost, autoPageview }) {
+  const track = (event, properties = {}) => fetch(trackingHost, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ event, properties }),
+  });
+  if (autoPageview) void track("pageview");
+  return { track };
+}
+`,
+              );
+              return;
+            }
+            const runtime = join(root, ".runtime-test");
+            await mkdir(runtime, { recursive: true });
+            for (const [source, target] of [
+              ["app/usermaven-provider.tsx", "usermaven-provider.mjs"],
+              [
+                "app/generated-usermaven-tracking.ts",
+                "generated-usermaven-tracking.mjs",
+              ],
+            ] as const) {
+              const compiled = transpileModule(
+                await readFile(join(root, source), "utf8"),
+                {
+                  compilerOptions: {
+                    target: ScriptTarget.ES2022,
+                    module: ModuleKind.ESNext,
+                    jsx: JsxEmit.ReactJSX,
+                  },
+                  reportDiagnostics: true,
+                },
+              );
+              expect(compiled.diagnostics ?? []).toEqual([]);
+              await writeFile(
+                join(runtime, target),
+                compiled.outputText.replace(
+                  '"./usermaven-provider"',
+                  '"./usermaven-provider.mjs"',
+                ),
+              );
+            }
+          },
+        },
+      );
+      expect(applied.outcome).toBe("succeeded");
+
+      const session = createVerificationSession(
+        { plan, environment: "test" },
+        {
+          now: () => new Date("2026-07-11T14:03:00.000Z"),
+          idFactory: () => "runtime-e2e-1234",
+        },
+      );
+      process.env.NEXT_PUBLIC_USERMAVEN_KEY = "public-test-key";
+      process.env.NEXT_PUBLIC_USERMAVEN_TRACKING_HOST = trackingHost;
+      (globalThis as Record<string, unknown>).__USERMAVEN_VERIFICATION_ID__ =
+        session.session_id;
+      const runtimeModule = (await import(
+        `${join(root, ".runtime-test", "generated-usermaven-tracking.mjs")}?run=${Date.now()}`
+      )) as { emitLinkCreated: () => Promise<Response> };
+      const collectorResponse = await runtimeModule.emitLinkCreated();
+      expect(collectorResponse.status).toBe(202);
+      expect(requests).toContainEqual({
+        event: "link_created",
+        properties: { _usermaven_verification_id: session.session_id },
+      });
+
+      const receiptKeys = generateKeyPairSync("ed25519");
+      const observedAt = "2026-07-11T14:04:00.000Z";
+      const receipt = {
+        source: "remote_usermaven_mcp" as const,
+        observed_at: observedAt,
+        public_key_fingerprint: workspace.public_key_fingerprint,
+        event_names: ["link_created"],
+        property_names: ["_usermaven_verification_id"],
+        identified_user: true,
+        identified_company: false,
+        verification_marker_matched: true,
+        attestation: {
+          algorithm: "ed25519" as const,
+          key_id: "runtime-e2e",
+          signature: "pending",
+        },
+      };
+      receipt.attestation.signature = signPayload(
+        null,
+        Buffer.from(
+          workspaceReceiptAttestationPayload(session.session_id, receipt),
+        ),
+        receiptKeys.privateKey,
+      ).toString("base64url");
+      const verified = await verifySetup(
+        {
+          projectRoot: root,
+          plan,
+          session,
+          evidence: {
+            session_id: session.session_id,
+            runtime: {
+              source: "e2e_test",
+              observed_at: observedAt,
+              event_names: ["link_created"],
+              property_names: ["_usermaven_verification_id"],
+              identified_user: true,
+              identified_company: false,
+              verification_marker_matched: true,
+            },
+            transport: {
+              source: "e2e_test",
+              observed_at: observedAt,
+              tracking_host: trackingHost,
+              accepted: true,
+              status_code: collectorResponse.status,
+              event_names: ["link_created"],
+              verification_marker_matched: true,
+            },
+            workspace_receipt: receipt,
+          },
+        },
+        {
+          now: () => new Date("2026-07-11T14:05:00.000Z"),
+          trustedWorkspaceKeys: {
+            "runtime-e2e": receiptKeys.publicKey.export({
+              type: "spki",
+              format: "pem",
+            }) as string,
+          },
+        },
+      );
+      expect(verified.outcome).toBe("pass");
+    } finally {
+      delete process.env.NEXT_PUBLIC_USERMAVEN_KEY;
+      delete process.env.NEXT_PUBLIC_USERMAVEN_TRACKING_HOST;
+      delete (globalThis as Record<string, unknown>)
+        .__USERMAVEN_VERIFICATION_ID__;
+      globalThis.fetch = originalFetch;
+    }
+  });
+
   it("generates an approval-ready React/Vite plan without a key value", async () => {
     const plan = await generateSetupPlan(
       {
@@ -314,6 +555,45 @@ describe("generateSetupPlan", () => {
     ).toEqual([]);
   });
 
+  it("wires a Next.js src Pages Router application entry", async () => {
+    const nextTrackingPlan = trackingPlanSchema.parse({
+      ...trackingPlan,
+      proposal: {
+        ...trackingPlan.proposal,
+        source: {
+          ...trackingPlan.proposal!.source,
+          framework: "next-pages-router",
+        },
+      },
+    });
+    const plan = await generateSetupPlan(
+      {
+        projectRoot: join(fixtures, "next-src-pages-router"),
+        workspace,
+        trackingPlan: nextTrackingPlan,
+        instrumentationProposal: instrumentationProposal(
+          nextTrackingPlan,
+          "src/lib/generated-usermaven-tracking.ts",
+        ),
+      },
+      options,
+    );
+
+    expect(plan.operations).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: "create-usermaven-client",
+          path: "src/lib/usermaven-client.ts",
+        }),
+        expect.objectContaining({
+          id: "wire-usermaven-pages-app",
+          type: "edit_file",
+          path: "src/pages/_app.tsx",
+        }),
+      ]),
+    );
+  });
+
   it("refuses unsupported generic React projects", async () => {
     const root = await mkdtemp(join(tmpdir(), "wizard-unsupported-"));
     temporaryRoots.push(root);
@@ -448,6 +728,47 @@ describe("generateSetupPlan", () => {
         options,
       ),
     ).rejects.toThrow("implement or explicitly defer every");
+  });
+
+  it("accepts a generated edit whose hunk body resembles diff headers", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-edit-happy-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    const before = "let value = 1;\n-- value;\n";
+    await writeFile(join(root, "src", "action.ts"), before);
+    const proposal = instrumentationProposal();
+    proposal.changes = [
+      {
+        id: "edit-action",
+        type: "edit_file",
+        summary: "Instrument the action",
+        path: "src/action.ts",
+        before_hash: `sha256:${createHash("sha256").update(before).digest("hex")}`,
+        unified_diff:
+          "--- a/src/action.ts\n+++ b/src/action.ts\n@@ -1,2 +1,2 @@\n let value = 1;\n--- value;\n+++ value;\n",
+        covers: instrumentationProposal().changes[0]!.covers,
+      },
+    ];
+
+    const plan = await generateSetupPlan(
+      {
+        projectRoot: root,
+        workspace,
+        trackingPlan,
+        instrumentationProposal: proposal,
+      },
+      options,
+    );
+    const edit = plan.operations.find(
+      (operation) => operation.id === "instrument-edit-action",
+    );
+
+    expect(edit).toMatchObject({ type: "edit_file", path: "src/action.ts" });
+    expect(
+      edit?.type === "edit_file"
+        ? applyPatch(before, edit.unified_diff)
+        : false,
+    ).toBe("let value = 1;\n++ value;\n");
   });
 
   it("rejects stale and protected AI instrumentation targets", async () => {

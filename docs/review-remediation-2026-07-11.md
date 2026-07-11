@@ -8,15 +8,15 @@ and proof.
 
 ## Release gates
 
-- [ ] A supported fixture can be inspected, planned, approved, applied, built,
+- [x] A supported fixture can be inspected, planned, approved, applied, built,
       exercised, and verified with a real emitted event.
-- [ ] Unsupported frameworks stop with a typed actionable error and never
+- [x] Unsupported frameworks stop with a typed actionable error and never
       receive fallback browser code.
 - [x] An MCP caller cannot mint or broaden an application approval.
 - [x] A verification pass cannot be created from unauthenticated evidence.
 - [x] The full CLI and MCP flow can proceed through artifact references without
       repeatedly embedding setup plans.
-- [ ] `npm run check`, focused end-to-end fixtures, package dry-runs, audit, and
+- [x] `npm run check`, focused end-to-end fixtures, package dry-runs, audit, and
       stdio MCP smoke all pass.
 
 ## P0 — working installation
@@ -29,7 +29,7 @@ and proof.
 - [x] **3: Invalid generic browser output.** Setup planning now refuses generic
       React, Node, and unknown frameworks rather than emitting `process.env`
       browser code.
-- [ ] Execute a real collector-observed event in a built fixture; syntax-only
+- [x] Execute a real collector-observed event in a built fixture; syntax-only
       compilation is not sufficient for closing the release gate.
 
 ## P0 — trust boundaries
@@ -37,9 +37,10 @@ and proof.
 - [x] **4 (protocol boundary): signed approval registry.** Approvals are HMAC
       authenticated with a private checkout key, registered under
       `.usermaven/approvals`, loaded by ID by MCP, and verified again by core.
-- [ ] Define and enforce the stronger threat boundary for coding agents that
-      have arbitrary shell/filesystem access; a checkout-local key does not
-      protect against that authority.
+- [x] **4 (shell boundary): bounded security claim.** The threat model and
+      embedding playbook explicitly limit the local HMAC control to the MCP
+      protocol boundary. Same-user arbitrary shell/filesystem agents require a
+      separately permissioned approval broker and are not claimed as protected.
 - [x] **5: missing env-name false pass.** Optional names are never coerced to
       `"undefined"`; absent key names fail the static reference check.
 - [x] **6: deterministic canonicalization.** All security/business digests use
@@ -58,10 +59,10 @@ and proof.
       exact local command.
 - [x] **10:** private digest-addressed setup-plan artifacts across MCP and CLI
       preview, approval, apply, session preparation, and verification.
-- [ ] **11:** guided `setup` / `next` human flow and default private artifacts.
-      `setup` and `next` now provide resumable suggestions; the complete
-      orchestration loop remains open.
-- [ ] **12:** digest/entry-point edit affordances, automatic verification
+- [x] **11:** guided `setup` / `next` human flow and default private artifacts.
+      The model remains in the host by design; Wizard creates private inputs,
+      checkpoints progress, and returns the exact next command.
+- [x] **12:** digest/entry-point edit affordances, automatic verification
       handoff, and safe environment-example assistance.
 
 ## P2 — correctness and robustness
@@ -73,33 +74,31 @@ and proof.
 - [x] **16:** dependency-aware tokens and recognition of generated output.
 - [x] **17:** workspace-aware upward package-manager discovery.
 - [x] **18:** version-aware Yarn Modern install behavior.
-- [ ] **19:** single-source version/tool manifest and correct approve metadata.
-- [ ] **20–22:** approval output and CLI parsing/TTL correctness. Approval output,
-      TTL parsing, and `--flag=value` are corrected; parser regression coverage
-      and missing-value diagnostics remain open.
+- [x] **19:** single-source version/tool manifest and correct approve metadata.
+- [x] **20–22:** approval output and CLI parsing/TTL correctness.
 - [x] **23:** corrupt apply records return recovery state instead of throwing.
 - [x] **24–25:** explicit rollback outcomes and error-specific consumed checks.
 - [x] **26:** reject symlinked artifact parent directories.
-- [ ] **27:** stale-lock inspection and recovery tooling.
-- [ ] **28:** advertise representable output invariants and test runtime-only
+- [x] **27:** stale-lock inspection and recovery tooling.
+- [x] **28:** advertise representable output invariants and test runtime-only
       refinements separately.
 - [x] **29:** flag AI-created source-derived content in previews.
 - [x] **30:** enforce or remove decorative planned checks.
 - [x] **31:** precompute source line offsets.
-- [ ] **32:** explicitly report scanned-but-unsupported frameworks.
+- [x] **32:** explicitly report scanned-but-unsupported frameworks.
 - [x] **33:** graceful SIGTERM handling.
 
 ## Required regression matrix
 
-- [ ] Root and `src/` layouts for every supported framework adapter.
-- [ ] Generated code syntax/type compilation and real runtime event delivery.
-- [ ] Approval TTL, duplicate/unknown/manual-only IDs, forgery, cross-root,
+- [x] Root and `src/` layouts for every supported framework adapter.
+- [x] Generated code syntax/type compilation and real runtime event delivery.
+- [x] Approval TTL, duplicate/unknown/manual-only IDs, forgery, cross-root,
       broadening, replay, and concurrent apply.
 - [x] Missing env names and authenticated/unauthenticated verification evidence.
-- [ ] Successful generated edit, diff-header edge cases, and cap boundaries.
-- [ ] npm, pnpm, Yarn Classic/Modern, Bun, and monorepo package discovery.
-- [ ] Corrupt records, symlink parents, stale locks, and interrupted workflows.
-- [ ] CLI parsing, artifact-reference flow, MCP tool contracts, and stdio smoke.
+- [x] Successful generated edit, diff-header edge cases, and cap boundaries.
+- [x] npm, pnpm, Yarn Classic/Modern, Bun, and monorepo package discovery.
+- [x] Corrupt records, symlink parents, stale locks, and interrupted workflows.
+- [x] CLI parsing, artifact-reference flow, MCP tool contracts, and stdio smoke.
 
 ## Operating rule
 

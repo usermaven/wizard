@@ -75,7 +75,13 @@ const aiProposal = {
 
 afterEach(async () => {
   await Promise.all(
-    ["react-vite", "next-app-router", "next-pages-router"].map((fixture) =>
+    [
+      "react-vite",
+      "next-app-router",
+      "next-pages-router",
+      "next-src-app-router",
+      "next-src-pages-router",
+    ].map((fixture) =>
       rm(join(fixtures, fixture, ".usermaven"), {
         recursive: true,
         force: true,
@@ -144,6 +150,9 @@ describe("local MCP server", () => {
         "prepare_verification",
         "verify_setup",
       ]);
+      expect(
+        tools.find((tool) => tool.name === "verify_setup")?.description,
+      ).toContain("derives outcome from the worst check");
       const readOnlyTools = tools.filter(
         (tool) =>
           tool.name !== "apply_changes" &&

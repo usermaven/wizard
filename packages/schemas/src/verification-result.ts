@@ -6,7 +6,7 @@ import {
   safeValueSchema,
   schemaVersion,
 } from "./common.js";
-import { sha256DigestSchema } from "./apply.js";
+import { sha256DigestSchema } from "./common.js";
 
 const observedNames = z.array(z.string().min(1).max(128)).max(1_000);
 

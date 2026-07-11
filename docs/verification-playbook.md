@@ -1,5 +1,9 @@
 # Verification playbook
 
+Successful apply results already include a 30-minute local verification
+session. The standalone preparation command below creates a fresh session for
+another environment or after the embedded session expires.
+
 Verification proves four different things: the approved files are present, the
 reviewed triggers execute, the selected collector accepts the events, and the
 selected Usermaven workspace receives the same marked test run. The wizard uses

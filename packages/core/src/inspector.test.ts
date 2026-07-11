@@ -23,6 +23,7 @@ describe("inspectProject", () => {
     ["next-app-router", "next-app-router"],
     ["next-pages-router", "next-pages-router"],
     ["next-src-app-router", "next-app-router"],
+    ["next-src-pages-router", "next-pages-router"],
   ] as const)("detects the %s fixture", async (fixture, framework) => {
     const result = await inspectProject(join(fixtures, fixture), { now });
 
@@ -142,6 +143,25 @@ describe("inspectProject", () => {
 
     const result = await inspectProject(root, { now });
     expect(result.instrumentation).toEqual([]);
+  });
+
+  it("reports scanned but unsupported framework adapters explicitly", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-inspector-vue-"));
+    temporaryRoots.push(root);
+    await mkdir(join(root, "src"));
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ dependencies: { vue: "3.5.0", nuxt: "4.0.0" } }),
+    );
+    await writeFile(join(root, "src", "App.vue"), "<template />\n");
+
+    const result = await inspectProject(root, { now });
+
+    expect(result.project.framework).toBe("node");
+    expect(result.unsupported_frameworks).toEqual(["nuxt", "vue"]);
+    expect(result.warnings).toContain(
+      "Detected unsupported framework adapters: nuxt, vue",
+    );
   });
 
   it("does not follow a package manifest symlink", async () => {

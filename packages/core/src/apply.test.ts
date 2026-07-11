@@ -18,11 +18,17 @@ import {
 } from "@usermaven/wizard-schemas";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { applyChanges, type CommandSpec } from "./apply.js";
+import {
+  applyChanges,
+  inspectApplyLock,
+  recoverStaleApplyLock,
+  type CommandSpec,
+} from "./apply.js";
 import {
   approvalConfirmation,
   createChangeApproval,
   digestSetupPlan,
+  fingerprintRepositoryRoot,
 } from "./approval.js";
 import { generateSetupPlan } from "./setup-plan.js";
 
@@ -168,6 +174,14 @@ describe("change approval", () => {
 });
 
 describe("applyChanges", () => {
+  it("inspects absent apply state without creating local directories", async () => {
+    const root = await project();
+    await expect(
+      inspectApplyLock(root, "approval_absent-state-1234"),
+    ).resolves.toMatchObject({ status: "absent", recoverable: false });
+    await expect(access(join(root, ".usermaven", "apply"))).rejects.toThrow();
+  });
+
   it("atomically creates only an approved file and blocks replay", async () => {
     const root = await project();
     const plan = await generatedPlan(root);
@@ -178,6 +192,12 @@ describe("applyChanges", () => {
     );
 
     expect(result.outcome).toBe("succeeded");
+    expect(result.verification_session).toMatchObject({
+      plan_id: plan.plan_id,
+      plan_digest: digestSetupPlan(plan),
+      environment: "local",
+      marker_property: "_usermaven_verification_id",
+    });
     expect(await readFile(join(root, "src", "usermaven.ts"), "utf8")).toContain(
       "usermavenClient",
     );
@@ -288,6 +308,56 @@ describe("applyChanges", () => {
     expect(commands[0]!.args).not.toContain("--ignore-scripts");
   });
 
+  it.each([
+    [
+      "pnpm@10.0.0",
+      "pnpm",
+      ["add", "--ignore-scripts", "@usermaven/sdk-js@^1.5.15"],
+    ],
+    [
+      "yarn@1.22.22",
+      "yarn",
+      ["add", "--ignore-scripts", "@usermaven/sdk-js@^1.5.15"],
+    ],
+    [
+      "bun@1.2.0",
+      "bun",
+      ["add", "--ignore-scripts", "@usermaven/sdk-js@^1.5.15"],
+    ],
+  ] as const)(
+    "uses safe install arguments for %s",
+    async (packageManager, command, args) => {
+      const root = await project();
+      await writeFile(
+        join(root, "package.json"),
+        JSON.stringify({
+          name: "package-manager-fixture",
+          packageManager,
+          dependencies: { react: "19.2.7", vite: "8.1.4" },
+        }),
+      );
+      const plan = await generatedPlan(root);
+      const approved = await approval(root, plan, ["install-usermaven-sdk"]);
+      const commands: CommandSpec[] = [];
+
+      await applyChanges(
+        { projectRoot: root, plan, approval: approved },
+        {
+          now: fixedNow,
+          commandRunner: async (spec) => {
+            commands.push(spec);
+          },
+        },
+      );
+
+      expect(commands[0]).toMatchObject({
+        command,
+        args: [...args],
+        cwd: root,
+      });
+    },
+  );
+
   it("restores package metadata after a partial install failure", async () => {
     const root = await project();
     const original = await readFile(join(root, "package.json"), "utf8");
@@ -309,6 +379,40 @@ describe("applyChanges", () => {
     expect(await readFile(join(root, "package.json"), "utf8")).toBe(original);
     await expect(access(join(root, "package-lock.json"))).rejects.toThrow();
     expect(result.rollback.warnings.join(" ")).toContain("node_modules");
+  });
+
+  it("allows only one concurrent apply for an approval", async () => {
+    const root = await project();
+    const plan = await generatedPlan(root);
+    const approved = await approval(root, plan, ["install-usermaven-sdk"]);
+    let release!: () => void;
+    let started!: () => void;
+    const runnerStarted = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const runnerReleased = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const first = applyChanges(
+      { projectRoot: root, plan, approval: approved },
+      {
+        now: fixedNow,
+        commandRunner: async () => {
+          started();
+          await runnerReleased;
+        },
+      },
+    );
+    await runnerStarted;
+
+    await expect(
+      applyChanges(
+        { projectRoot: root, plan, approval: approved },
+        { now: fixedNow, commandRunner: async () => undefined },
+      ),
+    ).rejects.toThrow("already in progress");
+    release();
+    await expect(first).resolves.toMatchObject({ outcome: "succeeded" });
   });
 
   it("rejects a stale edit without overwriting the newer file", async () => {
@@ -524,5 +628,84 @@ describe("applyChanges", () => {
     expect(await readFile(join(root, "src", "usermaven.ts"), "utf8")).toBe(
       "newer customer file",
     );
+  });
+
+  it("inspects and safely consumes a stale orphaned apply lock", async () => {
+    const root = await project();
+    const plan = await generatedPlan(root);
+    const approvalId = "approval_stale-lock-1234";
+    const applyDirectory = join(root, ".usermaven", "apply");
+    await mkdir(applyDirectory, { recursive: true });
+    await writeFile(
+      join(applyDirectory, `${approvalId}.lock`),
+      JSON.stringify({
+        approval_id: approvalId,
+        plan_id: plan.plan_id,
+        plan_digest: digestSetupPlan(plan),
+        repository_root_fingerprint: await fingerprintRepositoryRoot(root),
+        started_at: "2026-07-11T14:00:00.000Z",
+        pid: 999_999,
+      }),
+      { mode: 0o600 },
+    );
+    const lockOptions = {
+      now: fixedNow,
+      staleAfterMs: 30 * 60 * 1_000,
+      isProcessAlive: () => false,
+    };
+
+    await expect(
+      inspectApplyLock(root, approvalId, lockOptions),
+    ).resolves.toMatchObject({
+      status: "stale",
+      recoverable: true,
+    });
+    await expect(
+      recoverStaleApplyLock(root, approvalId, "wrong", lockOptions),
+    ).rejects.toThrow("confirmation did not match");
+
+    const recovered = await recoverStaleApplyLock(
+      root,
+      approvalId,
+      `RECOVER ${approvalId}`,
+      lockOptions,
+    );
+    expect(recovered.outcome).toBe("failed");
+    expect(recovered.operations).toEqual([]);
+    await expect(
+      inspectApplyLock(root, approvalId, lockOptions),
+    ).resolves.toMatchObject({
+      status: "completed",
+      recoverable: false,
+    });
+    await expect(
+      access(join(applyDirectory, `${approvalId}.lock`)),
+    ).rejects.toThrow();
+  });
+
+  it("will not recover a lock whose owning process is alive", async () => {
+    const root = await project();
+    const plan = await generatedPlan(root);
+    const approvalId = "approval_active-lock-1234";
+    const applyDirectory = join(root, ".usermaven", "apply");
+    await mkdir(applyDirectory, { recursive: true });
+    await writeFile(
+      join(applyDirectory, `${approvalId}.lock`),
+      JSON.stringify({
+        approval_id: approvalId,
+        plan_id: plan.plan_id,
+        plan_digest: digestSetupPlan(plan),
+        repository_root_fingerprint: await fingerprintRepositoryRoot(root),
+        started_at: "2026-07-11T14:00:00.000Z",
+        pid: process.pid,
+      }),
+      { mode: 0o600 },
+    );
+
+    const status = await inspectApplyLock(root, approvalId, {
+      now: fixedNow,
+      isProcessAlive: () => true,
+    });
+    expect(status).toMatchObject({ status: "active", recoverable: false });
   });
 });

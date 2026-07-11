@@ -19,6 +19,15 @@ export const packageManagerSchema = z.enum([
   "none",
 ]);
 
+export const unsupportedFrameworkSchema = z.enum([
+  "astro",
+  "nuxt",
+  "remix",
+  "svelte",
+  "sveltekit",
+  "vue",
+]);
+
 export const analyticsProviderSchema = z.enum([
   "usermaven",
   "amplitude",
@@ -79,6 +88,10 @@ export const projectInspectionSchema = z
     instrumentation: z.array(instrumentationOccurrenceSchema).max(10_000),
     entry_points: z.array(entryPointSchema).max(20).default([]),
     available_scripts: z.array(z.string().min(1).max(128)).max(100).default([]),
+    unsupported_frameworks: z
+      .array(unsupportedFrameworkSchema)
+      .max(10)
+      .default([]),
     scan: z
       .object({
         files_considered: z.number().int().nonnegative(),

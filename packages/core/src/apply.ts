@@ -18,6 +18,7 @@ import {
   applyResultSchema,
   changeApprovalSchema,
   setupPlanSchema,
+  verificationSessionSchema,
   type ApplyResult,
   type ChangeApproval,
   type SetupOperation,
@@ -61,6 +62,31 @@ export interface ApplyChangesInput {
 export interface ApplyChangesOptions {
   now?: () => Date;
   commandRunner?: CommandRunner;
+}
+
+interface ApplyLockRecord {
+  approval_id: string;
+  plan_id: string;
+  plan_digest: string;
+  repository_root_fingerprint: string;
+  started_at: string;
+  pid: number;
+}
+
+export interface ApplyLockStatus {
+  approval_id: string;
+  status: "absent" | "completed" | "active" | "stale" | "unsafe";
+  recoverable: boolean;
+  age_ms: number | null;
+  state_record: string;
+  lock_record: string;
+  reason: string;
+}
+
+export interface ApplyLockOptions {
+  now?: () => Date;
+  staleAfterMs?: number;
+  isProcessAlive?: (pid: number) => boolean;
 }
 
 function isErrno(error: unknown, code: string): boolean {
@@ -309,6 +335,194 @@ async function safeStateDirectory(root: string): Promise<string> {
   );
 }
 
+async function existingStateDirectory(root: string): Promise<string | null> {
+  let current = root;
+  for (const segment of STATE_DIRECTORY.split("/")) {
+    current = join(current, segment);
+    try {
+      const item = await lstat(current);
+      if (item.isSymbolicLink() || !item.isDirectory())
+        throw new Error("Apply state path is not a safe directory");
+    } catch (error) {
+      if (isErrno(error, "ENOENT")) return null;
+      throw error;
+    }
+  }
+  return current;
+}
+
+function validApprovalId(approvalId: string): void {
+  if (!/^approval_[a-zA-Z0-9-]{8,120}$/u.test(approvalId))
+    throw new Error("Approval ID is invalid");
+}
+
+function processAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return (error as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+async function readApplyLock(path: string): Promise<ApplyLockRecord> {
+  const item = await lstat(path);
+  if (
+    item.isSymbolicLink() ||
+    !item.isFile() ||
+    item.size > 10_000 ||
+    (item.mode & 0o077) !== 0
+  )
+    throw new Error("Apply lock is not a private regular state file");
+  const value = JSON.parse(
+    await readFile(path, "utf8"),
+  ) as Partial<ApplyLockRecord>;
+  if (
+    typeof value.approval_id !== "string" ||
+    typeof value.plan_id !== "string" ||
+    typeof value.plan_digest !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/u.test(value.plan_digest) ||
+    typeof value.repository_root_fingerprint !== "string" ||
+    !/^sha256:[a-f0-9]{64}$/u.test(value.repository_root_fingerprint) ||
+    typeof value.started_at !== "string" ||
+    !Number.isFinite(Date.parse(value.started_at)) ||
+    !Number.isSafeInteger(value.pid) ||
+    value.pid! < 1
+  )
+    throw new Error(
+      "Apply lock record is invalid or from an older Wizard version",
+    );
+  return value as ApplyLockRecord;
+}
+
+export async function inspectApplyLock(
+  projectRoot: string,
+  approvalId: string,
+  options: ApplyLockOptions = {},
+): Promise<ApplyLockStatus> {
+  validApprovalId(approvalId);
+  const root = await realpath(projectRoot);
+  const stateRecord = `${STATE_DIRECTORY}/${approvalId}.json`;
+  const lockRecord = `${STATE_DIRECTORY}/${approvalId}.lock`;
+  const stateDirectory = await existingStateDirectory(root);
+  if (!stateDirectory)
+    return {
+      approval_id: approvalId,
+      status: "absent",
+      recoverable: false,
+      age_ms: null,
+      state_record: stateRecord,
+      lock_record: lockRecord,
+      reason: "No apply state directory exists.",
+    };
+  try {
+    const item = await lstat(join(root, stateRecord));
+    return {
+      approval_id: approvalId,
+      status: item.isFile() && !item.isSymbolicLink() ? "completed" : "unsafe",
+      recoverable: false,
+      age_ms: null,
+      state_record: stateRecord,
+      lock_record: lockRecord,
+      reason: "A terminal one-time apply record already exists.",
+    };
+  } catch (error) {
+    if (!isErrno(error, "ENOENT")) throw error;
+  }
+  const lockPath = join(stateDirectory, `${approvalId}.lock`);
+  try {
+    const record = await readApplyLock(lockPath);
+    if (record.approval_id !== approvalId)
+      throw new Error("Apply lock belongs to another approval");
+    const age = Math.max(
+      0,
+      (options.now ?? (() => new Date()))().getTime() -
+        Date.parse(record.started_at),
+    );
+    const alive = (options.isProcessAlive ?? processAlive)(record.pid);
+    const staleAfterMs = options.staleAfterMs ?? 30 * 60 * 1_000;
+    const stale = !alive && age >= staleAfterMs;
+    return {
+      approval_id: approvalId,
+      status: stale ? "stale" : "active",
+      recoverable: stale,
+      age_ms: age,
+      state_record: stateRecord,
+      lock_record: lockRecord,
+      reason: stale
+        ? "The owning process is gone and the lock exceeded the stale threshold."
+        : alive
+          ? "The process recorded by the apply lock is still alive."
+          : "The lock is not old enough for safe recovery.",
+    };
+  } catch (error) {
+    if (isErrno(error, "ENOENT"))
+      return {
+        approval_id: approvalId,
+        status: "absent",
+        recoverable: false,
+        age_ms: null,
+        state_record: stateRecord,
+        lock_record: lockRecord,
+        reason: "No apply lock or terminal state record exists.",
+      };
+    return {
+      approval_id: approvalId,
+      status: "unsafe",
+      recoverable: false,
+      age_ms: null,
+      state_record: stateRecord,
+      lock_record: lockRecord,
+      reason: error instanceof Error ? error.message : "Apply lock is unsafe.",
+    };
+  }
+}
+
+export async function recoverStaleApplyLock(
+  projectRoot: string,
+  approvalId: string,
+  confirmation: string,
+  options: ApplyLockOptions = {},
+): Promise<ApplyResult> {
+  if (confirmation !== `RECOVER ${approvalId}`)
+    throw new Error("Stale-lock recovery confirmation did not match");
+  const status = await inspectApplyLock(projectRoot, approvalId, options);
+  if (!status.recoverable)
+    throw new Error(`Apply lock is not recoverable: ${status.reason}`);
+  const root = await realpath(projectRoot);
+  const lockPath = join(root, status.lock_record);
+  const lock = await readApplyLock(lockPath);
+  const now = (options.now ?? (() => new Date()))();
+  const completedAt = now;
+  const result = applyResultSchema.parse({
+    schema_version: "1",
+    approval_id: approvalId,
+    plan_id: lock.plan_id,
+    plan_digest: lock.plan_digest,
+    repository_root_fingerprint: lock.repository_root_fingerprint,
+    outcome: "failed",
+    operations: [],
+    rollback: { attempted: false, succeeded: false, warnings: [] },
+    warnings: [
+      "A stale apply lock was converted into a terminal consumed record; inspect the working tree before creating a new plan and approval.",
+    ],
+    state_record: status.state_record,
+    verification_session: null,
+    started_at: lock.started_at,
+    completed_at: completedAt.toISOString(),
+  });
+  await writeFile(
+    join(root, status.state_record),
+    JSON.stringify(result, null, 2),
+    {
+      flag: "wx",
+      mode: 0o600,
+    },
+  );
+  await unlink(lockPath);
+  return result;
+}
+
 export async function applyChanges(
   input: ApplyChangesInput,
   options: ApplyChangesOptions = {},
@@ -361,10 +575,21 @@ export async function applyChanges(
 
   const stateDirectory = await safeStateDirectory(root);
   const lockPath = join(stateDirectory, `${approval.approval_id}.lock`);
-  await writeFile(lockPath, JSON.stringify({ plan_digest: planDigest }), {
-    flag: "wx",
-    mode: 0o600,
-  }).catch((error) => {
+  await writeFile(
+    lockPath,
+    JSON.stringify({
+      approval_id: approval.approval_id,
+      plan_id: plan.plan_id,
+      plan_digest: planDigest,
+      repository_root_fingerprint: rootFingerprint,
+      started_at: startedAt.toISOString(),
+      pid: process.pid,
+    }),
+    {
+      flag: "wx",
+      mode: 0o600,
+    },
+  ).catch((error) => {
     if (isErrno(error, "EEXIST"))
       throw new Error("Approval is already in progress or consumed");
     throw error;
@@ -509,6 +734,7 @@ export async function applyChanges(
     }
   }
 
+  const completedAt = now();
   const result = applyResultSchema.parse({
     schema_version: "1",
     approval_id: approval.approval_id,
@@ -533,8 +759,23 @@ export async function applyChanges(
       "Approved build checks execute repository-defined scripts; generated build artifacts are not included in rollback snapshots.",
     ],
     state_record: stateRecord,
+    verification_session:
+      failure === null
+        ? verificationSessionSchema.parse({
+            schema_version: "1",
+            session_id: `verify_${randomUUID()}`,
+            plan_id: plan.plan_id,
+            plan_digest: planDigest,
+            environment: "local",
+            marker_property: "_usermaven_verification_id",
+            created_at: completedAt.toISOString(),
+            expires_at: new Date(
+              completedAt.getTime() + 30 * 60 * 1_000,
+            ).toISOString(),
+          })
+        : null,
     started_at: startedAt.toISOString(),
-    completed_at: now().toISOString(),
+    completed_at: completedAt.toISOString(),
   });
   const temporaryRecord = `${recordPath}.${randomUUID()}.tmp`;
   await writeFile(temporaryRecord, JSON.stringify(result, null, 2), {

@@ -39,6 +39,8 @@ import {
 import { z } from "zod";
 import { ZodError } from "zod";
 
+import { MCP_TOOLS } from "./manifest.js";
+
 const projectPathSchema = z
   .string()
   .min(1)
@@ -225,7 +227,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "inspect_project",
+    MCP_TOOLS.inspectProject,
     {
       title: "Inspect local project",
       description:
@@ -249,7 +251,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "checkpoint_workflow",
+    MCP_TOOLS.checkpointWorkflow,
     {
       title: "Checkpoint setup workflow",
       description:
@@ -300,7 +302,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "resume_workflow",
+    MCP_TOOLS.resumeWorkflow,
     {
       title: "Resume setup workflow",
       description:
@@ -327,7 +329,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "propose_tracking_plan",
+    MCP_TOOLS.proposeTrackingPlan,
     {
       title: "Validate AI-generated tracking plan",
       description:
@@ -360,7 +362,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "generate_setup_plan",
+    MCP_TOOLS.generateSetupPlan,
     {
       title: "Generate setup plan",
       description:
@@ -395,7 +397,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "preview_changes",
+    MCP_TOOLS.previewChanges,
     {
       title: "Preview setup changes",
       description:
@@ -426,7 +428,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "apply_changes",
+    MCP_TOOLS.applyChanges,
     {
       title: "Apply approved setup operations",
       description:
@@ -493,7 +495,7 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "prepare_verification",
+    MCP_TOOLS.prepareVerification,
     {
       title: "Prepare verification session",
       description:
@@ -529,11 +531,11 @@ export async function createWizardMcpServer(
   );
 
   server.registerTool(
-    "verify_setup",
+    MCP_TOOLS.verifySetup,
     {
       title: "Verify Usermaven setup",
       description:
-        "Verify exact local file state and combine marker-bound runtime, collector, and remote workspace evidence without accepting or returning raw analytics payloads.",
+        "Verify exact local file state and combine marker-bound runtime, collector, and remote workspace evidence without accepting or returning raw analytics payloads. Runtime output validation also requires completed_at >= started_at and derives outcome from the worst check; these cross-field invariants cannot be represented by the MCP JSON Schema shape.",
       inputSchema: {
         project_path: projectPathInputSchema.optional(),
         plan_digest: setupPlanArtifactReferenceSchema.shape.plan_digest,

@@ -86,3 +86,26 @@ showing approval UI, and following the returned next action.
 This boundary excludes generic model execution, durable agent runs, scheduling,
 tool-loop orchestration, multi-agent coordination, and long-term memory. Those
 belong in the agent host/runtime, not this repository.
+
+## Recover a stale apply lock
+
+When `next` reports `inspect_apply_state`, inspect the exact approval lock:
+
+```sh
+usermaven-wizard apply-lock . --approval-id approval_...
+```
+
+An `active` lock is never recoverable. A lock becomes `stale` only after its
+recorded process is gone and the 30-minute safety window has elapsed. Recovering
+does not replay the approval; it writes a terminal failed/consumed record so the
+working tree can be inspected and a new plan and approval can be created:
+
+```sh
+usermaven-wizard recover-lock . \
+  --approval-id approval_... \
+  --confirm "RECOVER approval_..."
+```
+
+Unsafe, legacy, too-recent, and live-process locks are refused. Never delete
+`.usermaven/apply/*.lock` manually because doing so can permit an uncertain
+approval to be attempted again.

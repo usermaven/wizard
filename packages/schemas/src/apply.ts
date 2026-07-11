@@ -1,8 +1,14 @@
 import { z } from "zod";
 
-import { isoDateTime, relativePath, schemaVersion } from "./common.js";
+import {
+  isoDateTime,
+  relativePath,
+  schemaVersion,
+  sha256DigestSchema,
+} from "./common.js";
+import { verificationSessionSchema } from "./verification-result.js";
 
-export const sha256DigestSchema = z.string().regex(/^sha256:[a-f0-9]{64}$/u);
+export { sha256DigestSchema } from "./common.js";
 
 export const changeApprovalSchema = z
   .object({
@@ -71,6 +77,7 @@ export const applyResultSchema = z
       .strict(),
     warnings: z.array(z.string().min(1).max(1_000)).max(50),
     state_record: relativePath,
+    verification_session: verificationSessionSchema.nullable().default(null),
     started_at: isoDateTime,
     completed_at: isoDateTime,
   })

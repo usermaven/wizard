@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import { wizardManifestSchema } from "@usermaven/wizard-schemas";
 
-import { manifest } from "./manifest.js";
+import { MCP_TOOLS, manifest } from "./manifest.js";
 
 describe("CLI manifest", () => {
   it("conforms to the public schema", () => {
@@ -23,16 +23,6 @@ describe("CLI manifest", () => {
       manifest.local_mcp_tools
         .filter((tool) => tool.availability === "implemented")
         .map((tool) => tool.name),
-    ).toEqual([
-      "inspect_project",
-      "checkpoint_workflow",
-      "resume_workflow",
-      "propose_tracking_plan",
-      "generate_setup_plan",
-      "preview_changes",
-      "apply_changes",
-      "prepare_verification",
-      "verify_setup",
-    ]);
+    ).toEqual(Object.values(MCP_TOOLS));
   });
 });

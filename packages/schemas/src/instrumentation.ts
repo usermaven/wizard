@@ -1,7 +1,7 @@
 import { z } from "zod";
 
 import { relativePath, schemaVersion } from "./common.js";
-import { sha256DigestSchema } from "./apply.js";
+import { sha256DigestSchema } from "./common.js";
 
 export const trackingItemReferenceSchema = z.discriminatedUnion("kind", [
   z

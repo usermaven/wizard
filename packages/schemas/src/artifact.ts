@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { sha256DigestSchema } from "./apply.js";
+import { sha256DigestSchema } from "./common.js";
 import { relativePath, schemaVersion } from "./common.js";
 
 export const setupPlanArtifactReferenceSchema = z

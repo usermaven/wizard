@@ -54,6 +54,14 @@ usermaven-wizard apply setup-plan.json \
   --root /path/to/project
 ```
 
+If approval was registered without an additional output file, use its ID:
+
+```sh
+usermaven-wizard apply --root /path/to/project \
+  --plan-digest sha256:... \
+  --approval-id approval_...
+```
+
 An MCP client passes the unchanged plan and only the returned `approval_id` to
 `apply_changes`. The server loads the private artifact registered under
 `.usermaven/approvals/`, verifies its checkout-local HMAC, and then consumes it.
@@ -72,6 +80,11 @@ Every attempt returns or persists a normalized result under
 `.usermaven/apply/`. A consumed approval cannot be replayed, including after a
 failed operation. On failure, the wizard restores captured files in reverse
 order and marks prior operations as rolled back.
+
+A successful result also contains a short-lived `verification_session` for the
+`local` environment, so an agent can immediately set its marker and collect the
+combined runtime/transport evidence artifact. Use `verification-session` only
+when a different environment or a fresh observation window is needed.
 
 Rollback is intentionally bounded. Package-manager caches and `node_modules`
 changes can remain after an install attempt, and repository-defined build scripts

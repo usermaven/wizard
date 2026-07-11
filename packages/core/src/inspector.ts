@@ -213,6 +213,35 @@ interface PackageJson {
   packageManager: string | null;
 }
 
+type UnsupportedFramework = ProjectInspection["unsupported_frameworks"][number];
+
+function unsupportedFrameworks(
+  packageJson: PackageJson | null,
+  sourceFiles: string[],
+): UnsupportedFramework[] {
+  const dependencies = {
+    ...packageJson?.dependencies,
+    ...packageJson?.devDependencies,
+  };
+  const detected = new Set<UnsupportedFramework>();
+  const packages: Array<[string, UnsupportedFramework]> = [
+    ["astro", "astro"],
+    ["nuxt", "nuxt"],
+    ["@remix-run/react", "remix"],
+    ["svelte", "svelte"],
+    ["@sveltejs/kit", "sveltekit"],
+    ["vue", "vue"],
+  ];
+  for (const [name, framework] of packages)
+    if (Object.hasOwn(dependencies, name)) detected.add(framework);
+  for (const path of sourceFiles) {
+    const extension = extname(path).toLowerCase();
+    if (extension === ".vue") detected.add("vue");
+    if (extension === ".svelte") detected.add("svelte");
+  }
+  return [...detected].sort();
+}
+
 function normalizeRelative(root: string, path: string): string {
   return relative(root, path).split(sep).join("/");
 }
@@ -582,7 +611,12 @@ export async function inspectProject(
   }
 
   const collected = await collectSourceFiles(root, maxFiles);
+  const unsupported = unsupportedFrameworks(packageJson, collected.files);
   warnings.push(...collected.warnings);
+  if (unsupported.length > 0)
+    warnings.push(
+      `Detected unsupported framework adapters: ${unsupported.join(", ")}`,
+    );
   const instrumentation: ProjectInspection["instrumentation"] = [];
   const dependencyProviders = new Set(
     analyticsDependencies.map((dependency) => dependency.provider),
@@ -667,6 +701,7 @@ export async function inspectProject(
     instrumentation,
     entry_points: entryPoints,
     available_scripts: Object.keys(packageJson?.scripts ?? {}).sort(),
+    unsupported_frameworks: unsupported,
     scan: {
       files_considered: collected.files.length,
       files_scanned: filesScanned,

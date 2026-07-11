@@ -33,6 +33,7 @@ import {
 
 import { digestSetupPlan, fingerprintRepositoryRoot } from "./approval.js";
 import { canonicalJsonDigest } from "./canonical.js";
+import { inspectProject } from "./inspector.js";
 
 const STATE_DIRECTORY = ".usermaven/workflows";
 const MAXIMUM_ARTIFACT_BYTES = 5_000_000;
@@ -68,6 +69,89 @@ export interface SaveWorkflowCheckpointInput {
 export interface WorkflowOptions {
   now?: () => Date;
   idFactory?: () => string;
+}
+
+export async function startGuidedSetup(
+  projectRoot: string,
+  options: WorkflowOptions = {},
+) {
+  const root = await realpath(projectRoot);
+  const inspection = await inspectProject(
+    root,
+    options.now ? { now: options.now } : {},
+  );
+  const checkpoint = await saveWorkflowCheckpoint(
+    { projectRoot: root, completedStep: "inspection_completed" },
+    options,
+  );
+  const relativeDirectory = `${STATE_DIRECTORY}/${checkpoint.workflow_id}/inputs`;
+  let current = root;
+  for (const segment of relativeDirectory.split("/")) {
+    current = join(current, segment);
+    try {
+      const item = await lstat(current);
+      if (item.isSymbolicLink() || !item.isDirectory())
+        throw new Error("Guided workflow path is not a safe directory");
+    } catch (error) {
+      if (!isErrno(error, "ENOENT")) throw error;
+      await mkdir(current, { mode: 0o700 });
+    }
+  }
+  const defaults = {
+    inspection: `${relativeDirectory}/inspection.json`,
+    business_context: `${relativeDirectory}/business-context.json`,
+    ai_proposal: `${relativeDirectory}/ai-proposal.json`,
+    tracking_plan: `${relativeDirectory}/tracking-plan.json`,
+    ai_instrumentation: `${relativeDirectory}/ai-instrumentation.json`,
+  };
+  await Promise.all([
+    writeFile(
+      join(root, defaults.inspection),
+      JSON.stringify(inspection, null, 2),
+      {
+        flag: "wx",
+        mode: 0o600,
+      },
+    ),
+    writeFile(
+      join(root, defaults.business_context),
+      JSON.stringify(
+        {
+          _instructions:
+            "Replace this template with explicit product goals, user journeys, revenue context, and data policy before planning.",
+        },
+        null,
+        2,
+      ),
+      { flag: "wx", mode: 0o600 },
+    ),
+    writeFile(
+      join(root, defaults.ai_proposal),
+      JSON.stringify(
+        {
+          _instructions:
+            "Have the agent create a schema-valid AI tracking proposal from inspection.json and business-context.json.",
+        },
+        null,
+        2,
+      ),
+      { flag: "wx", mode: 0o600 },
+    ),
+    writeFile(
+      join(root, defaults.ai_instrumentation),
+      JSON.stringify(
+        {
+          _instructions:
+            "After the tracking plan is reviewed, have the agent create schema-valid source-aware instrumentation here.",
+        },
+        null,
+        2,
+      ),
+      { flag: "wx", mode: 0o600 },
+    ),
+  ]);
+  const next = await resumeWorkflow(root, checkpoint.workflow_id, options);
+  return { inspection, checkpoint, default_artifacts: defaults, next };
 }
 
 function isErrno(error: unknown, code: string): boolean {
@@ -414,8 +498,7 @@ export async function resumeWorkflow(
       .map((operation) => operation.id)
       .join(",");
     const suggestedCommands: Record<string, string | undefined> = {
-      generate_tracking_plan:
-        "usermaven-wizard plan . --business-context business-context.json --ai-proposal ai-proposal.json",
+      generate_tracking_plan: `usermaven-wizard plan . --business-context ${STATE_DIRECTORY}/${checkpoint.workflow_id}/inputs/business-context.json --ai-proposal ${STATE_DIRECTORY}/${checkpoint.workflow_id}/inputs/ai-proposal.json > ${STATE_DIRECTORY}/${checkpoint.workflow_id}/inputs/tracking-plan.json`,
       generate_setup_plan: checkpoint.artifacts.tracking_plan
         ? `usermaven-wizard setup-plan . --tracking-plan ${checkpoint.artifacts.tracking_plan.path} --ai-instrumentation ai-instrumentation.json --workspace-name <name> --region <region> --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>`
         : undefined,

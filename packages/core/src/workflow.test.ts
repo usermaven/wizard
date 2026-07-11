@@ -1,4 +1,12 @@
-import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
+import {
+  lstat,
+  mkdir,
+  mkdtemp,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -10,7 +18,11 @@ import {
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createChangeApproval } from "./approval.js";
-import { resumeWorkflow, saveWorkflowCheckpoint } from "./workflow.js";
+import {
+  resumeWorkflow,
+  saveWorkflowCheckpoint,
+  startGuidedSetup,
+} from "./workflow.js";
 
 const roots: string[] = [];
 const now = () => new Date("2026-07-11T16:00:00Z");
@@ -83,6 +95,32 @@ afterEach(async () => {
 });
 
 describe("workflow checkpoints", () => {
+  it("starts a guided workflow with private default artifacts", async () => {
+    const root = await project();
+    const result = await startGuidedSetup(root, {
+      now,
+      idFactory: () => "guided-setup-1234",
+    });
+
+    expect(result.next).toMatchObject({
+      next_action: "generate_tracking_plan",
+      suggested_command: expect.stringContaining(
+        ".usermaven/workflows/workflow_guided-setup-1234/inputs/business-context.json",
+      ),
+    });
+    expect(
+      JSON.parse(
+        await readFile(join(root, result.default_artifacts.inspection), "utf8"),
+      ),
+    ).toMatchObject({
+      project: { framework: "unknown" },
+    });
+    expect(
+      (await lstat(join(root, result.default_artifacts.business_context)))
+        .mode & 0o077,
+    ).toBe(0);
+  });
+
   it("persists safe progress and returns a deterministic next action", async () => {
     const root = await project();
     const created = await saveWorkflowCheckpoint(
