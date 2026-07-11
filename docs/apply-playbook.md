@@ -32,6 +32,15 @@ usermaven-wizard approve setup-plan.json \
   --output approval.json
 ```
 
+When `setup-plan` already stored the private artifact, the equivalent command
+avoids another full JSON round trip:
+
+```sh
+usermaven-wizard approve --root /path/to/project \
+  --plan-digest sha256:... \
+  --operations install-usermaven-sdk,create-usermaven-client
+```
+
 The CLI displays the plan ID, digest, and selected operations and requires an
 exact typed confirmation. The artifact is mode `0600`, short-lived, and bound to
 the canonical repository root. Treat it as a temporary local capability and do

@@ -633,6 +633,21 @@ export async function verifySetup(
     );
   }
 
+  for (const planned of plan.checks.filter((item) => item.required)) {
+    if (checks.some((item) => item.id === planned.id)) continue;
+    checks.push(
+      check(
+        `planned-${planned.id}`,
+        planned.layer,
+        "fail",
+        "A required planned verification check has no implementation",
+        staticObservedAt,
+        { planned_check_id: planned.id },
+        "Regenerate the setup plan with a supported verification contract.",
+      ),
+    );
+  }
+
   const outcome = checks.some((item) => item.outcome === "fail")
     ? "fail"
     : checks.some((item) => item.outcome === "warn")

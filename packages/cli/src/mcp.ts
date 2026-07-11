@@ -66,9 +66,11 @@ async function main(): Promise<void> {
     ),
   });
   const transport = new StdioServerTransport();
-  process.once("SIGINT", () => {
+  const shutdown = () => {
     void server.close().finally(() => process.exit(0));
-  });
+  };
+  process.once("SIGINT", shutdown);
+  process.once("SIGTERM", shutdown);
   await server.connect(transport);
 }
 

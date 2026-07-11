@@ -78,7 +78,9 @@ Setup generation references the public key through a framework-specific
 environment-variable name and never accepts its value. Source-aware AI edits are
 bound to exact tracking items and become approval-required file operations.
 Previewing renders them without installing packages, writing files, or running
-commands.
+commands. The exact plan is also stored privately by digest, so subsequent CLI
+and MCP phases can use `--plan-digest` / `plan_digest` without echoing the full
+source-bearing artifact through model context.
 
 ## Approve and apply exact operations
 

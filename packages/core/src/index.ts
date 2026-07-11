@@ -1,5 +1,6 @@
 export { inspectProject, type InspectProjectOptions } from "./inspector.js";
 export { previewChanges } from "./change-preview.js";
+export { loadSetupPlanArtifact, storeSetupPlanArtifact } from "./artifact.js";
 export { canonicalJson, canonicalJsonDigest } from "./canonical.js";
 export {
   approvalConfirmation,

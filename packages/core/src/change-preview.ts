@@ -29,6 +29,10 @@ function installPreview(
 
 export function previewChanges(input: SetupPlan): ChangePreview {
   const plan = setupPlanSchema.parse(input);
+  const aiSourceOperations = new Set(
+    plan.instrumentation?.coverage.map((coverage) => coverage.operation_id) ??
+      [],
+  );
   const items: ChangePreview["items"] = plan.operations.map((operation) => {
     switch (operation.type) {
       case "install_package":
@@ -59,7 +63,7 @@ export function previewChanges(input: SetupPlan): ChangePreview {
           path: operation.path,
           preview: operation.content,
           requires_approval: operation.requires_approval,
-          contains_repository_source: false,
+          contains_repository_source: aiSourceOperations.has(operation.id),
         };
       case "manual_step":
         return {
@@ -103,7 +107,7 @@ export function previewChanges(input: SetupPlan): ChangePreview {
       "Mutation operations still require explicit approval before a future apply tool may execute them.",
       ...(includesSource
         ? [
-            "Edit previews may contain repository source context and must remain local.",
+            "AI edit/create previews may contain repository-derived source and must remain local.",
           ]
         : []),
     ],

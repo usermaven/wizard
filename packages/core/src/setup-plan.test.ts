@@ -517,6 +517,11 @@ describe("previewChanges", () => {
     expect(
       preview.items.find((item) => item.type === "create_file")?.preview,
     ).toContain("usermavenClient");
+    expect(
+      preview.items.find(
+        (item) => item.operation_id === "instrument-generate-tracking-hooks",
+      ),
+    ).toMatchObject({ contains_repository_source: true });
     expect(preview.warnings.join(" ")).toContain("no package, file, command");
   });
 });

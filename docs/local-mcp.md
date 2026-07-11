@@ -7,9 +7,9 @@ no listening port and makes no remote Usermaven calls. Version `0.11.0` exposes:
 - `checkpoint_workflow`: persist private, digest-bound workflow state
 - `resume_workflow`: validate recovery state and return one next action
 - `propose_tracking_plan`: validate and stamp an AI-generated tracking plan
-- `generate_setup_plan`: typed SDK and source-aware AI instrumentation operations
-- `preview_changes`: rendered operations with no execution
-- `apply_changes`: exact operations authorized by a registered signed approval ID
+- `generate_setup_plan`: persist typed operations and return a compact plan digest
+- `preview_changes`: load a plan digest and render operations with no execution
+- `apply_changes`: plan digest plus a registered signed approval ID
 - `prepare_verification`: a short-lived marker session for one plan/environment
 - `verify_setup`: exact local checks plus normalized live evidence evaluation
 
@@ -111,6 +111,12 @@ escape rejection.
   or user identifiers.
 - Workflow checkpoints contain artifact paths and digests only. Resume never
   executes a model or action and never replays a consumed or uncertain approval.
+- Setup plans are stored mode-0600 under `.usermaven/artifacts/setup-plans`.
+  Downstream tools accept `plan_digest`, revalidate the stored content, and never
+  require the model to echo source-bearing plan JSON.
+- Calling `apply_changes` without `approval_id` returns a sanitized
+  `approval_required` error containing exact operation IDs and the local approve
+  command. Other expected failures use stable codes and retryability metadata.
 
 ## Troubleshooting
 

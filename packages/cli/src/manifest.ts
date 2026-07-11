@@ -1,4 +1,5 @@
 import {
+  WIZARD_VERSION,
   wizardManifestSchema,
   type WizardManifest,
 } from "@usermaven/wizard-schemas";
@@ -43,7 +44,7 @@ const localState = (name: string, description: string, agentSafe = true) => ({
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.11.0",
+  version: WIZARD_VERSION,
   node: ">=20",
   commands: [
     readOnly(
@@ -56,10 +57,9 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Validate and stamp an AI-generated tracking plan without changing files.",
       "implemented",
     ),
-    readOnly(
+    localState(
       "setup-plan",
       "Generate approval-ready SDK and AI instrumentation operations without changing files.",
-      "implemented",
     ),
     readOnly(
       "preview",
@@ -95,6 +95,15 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Validate workflow state and return one deterministic next action.",
       "implemented",
     ),
+    localState(
+      "setup",
+      "Inspect a project, start a private workflow, and return the exact next action.",
+    ),
+    readOnly(
+      "next",
+      "Validate workflow state and print the exact next command.",
+      "implemented",
+    ),
     readOnly("doctor", "Diagnose configuration and connectivity problems."),
     readOnly(
       "manifest",
@@ -122,10 +131,9 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Propose versioned identity, event, and property contracts.",
       "implemented",
     ),
-    readOnly(
+    localState(
       "generate_setup_plan",
       "Create approval-ready SDK and source-aware AI instrumentation operations.",
-      "implemented",
     ),
     readOnly(
       "preview_changes",

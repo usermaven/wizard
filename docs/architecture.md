@@ -38,6 +38,8 @@ installation sessions.
    install/create/edit/manual/check operations. Every tracking item must be
    implemented or explicitly deferred. It accepts an environment-variable name
    and key fingerprint, never the public-key value.
+   It persists the exact result as a private digest-addressed artifact so later
+   phases exchange a compact reference rather than source-bearing plan JSON.
 4. `preview` renders each proposed operation and diff without executing it.
 5. `approve` requires a local interactive confirmation and emits a short-lived,
    one-use artifact bound to the plan digest, repository root, and operation IDs.

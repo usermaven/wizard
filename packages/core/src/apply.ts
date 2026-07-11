@@ -31,6 +31,7 @@ import {
   fingerprintRepositoryRoot,
   verifyChangeApproval,
 } from "./approval.js";
+import { validateSingleFileUnifiedDiff } from "./diff-validation.js";
 
 const SNAPSHOT_LIMIT = 5_000_000;
 const STATE_DIRECTORY = ".usermaven/apply";
@@ -46,6 +47,7 @@ export interface CommandSpec {
   command: string;
   args: string[];
   cwd: string;
+  env?: Record<string, string>;
 }
 
 export type CommandRunner = (spec: CommandSpec) => Promise<void>;
@@ -189,7 +191,7 @@ async function defaultCommandRunner(spec: CommandSpec): Promise<void> {
   await new Promise<void>((resolvePromise, rejectPromise) => {
     const child = spawn(spec.command, spec.args, {
       cwd: spec.cwd,
-      env: process.env,
+      env: { ...process.env, ...(spec.env ?? {}) },
       shell: false,
       stdio: ["ignore", "ignore", "ignore"],
     });
@@ -206,11 +208,11 @@ async function defaultCommandRunner(spec: CommandSpec): Promise<void> {
   });
 }
 
-function installCommand(
+async function installCommand(
   plan: SetupPlan,
   operation: Extract<SetupOperation, { type: "install_package" }>,
   root: string,
-): CommandSpec {
+): Promise<CommandSpec> {
   const dependency = `${operation.package_name}@${operation.version_range}`;
   switch (plan.project.package_manager) {
     case "npm":
@@ -236,15 +238,27 @@ function installCommand(
         cwd: root,
       };
     case "yarn":
+      const packageManager = await readFile(join(root, "package.json"), "utf8")
+        .then((content) => {
+          const value: unknown = JSON.parse(content);
+          return value !== null && typeof value === "object"
+            ? (value as Record<string, unknown>).packageManager
+            : undefined;
+        })
+        .catch(() => undefined);
+      const modern =
+        typeof packageManager === "string" &&
+        /^yarn@(?:[2-9]|[1-9][0-9])/u.test(packageManager);
       return {
         command: "yarn",
         args: [
           "add",
-          "--ignore-scripts",
+          ...(!modern ? ["--ignore-scripts"] : []),
           ...(operation.dev ? ["--dev"] : []),
           dependency,
         ],
         cwd: root,
+        ...(modern ? { env: { YARN_ENABLE_SCRIPTS: "false" } } : {}),
       };
     case "bun":
       return {
@@ -281,28 +295,7 @@ function checkCommand(
 }
 
 function validateSimpleUnifiedDiff(diff: string, expectedPath: string): void {
-  if (
-    /^(?:diff --git|rename (?:from|to)|copy (?:from|to)|GIT binary patch)/mu.test(
-      diff,
-    )
-  ) {
-    throw new Error("Only a single-file textual unified diff can be applied");
-  }
-  const paths = [...diff.matchAll(/^(?:---|\+\+\+)\s+([^\t\n]+)/gmu)].map(
-    (match) => match[1],
-  );
-  if (paths.length !== 2)
-    throw new Error("Edit operation must contain one unified diff file pair");
-  const accepted = new Set([
-    expectedPath,
-    `a/${expectedPath}`,
-    `b/${expectedPath}`,
-  ]);
-  if (paths.some((path) => path !== "/dev/null" && !accepted.has(path!))) {
-    throw new Error(
-      "Unified diff path does not match the approved operation path",
-    );
-  }
+  validateSingleFileUnifiedDiff(diff, expectedPath);
 }
 
 async function safeStateDirectory(root: string): Promise<string> {
@@ -382,6 +375,7 @@ export async function applyChanges(
   const createdDirectories: string[] = [];
   const operationResults: ApplyResult["operations"] = [];
   let failure: Error | null = null;
+  let checkFailure = false;
   let installRan = false;
   const runner = options.commandRunner ?? defaultCommandRunner;
 
@@ -463,7 +457,7 @@ export async function applyChanges(
             if (!rollbackSnapshots.includes(item)) rollbackSnapshots.push(item);
           }
           installRan = true;
-          await runner(installCommand(plan, operation, root));
+          await runner(await installCommand(plan, operation, root));
         } else if (operation.type === "run_check") {
           await runner(checkCommand(operation, root));
         }
@@ -474,6 +468,7 @@ export async function applyChanges(
           summary: operation.summary,
         });
       } catch (error) {
+        checkFailure = operation.type === "run_check";
         failure =
           error instanceof Error ? error : new Error("Operation failed");
         operationResults.push({
@@ -493,8 +488,13 @@ export async function applyChanges(
 
   const rollbackWarnings: string[] = [];
   let rollbackSucceeded = true;
-  if (failure) {
-    rollbackWarnings.push(...(await restoreSnapshots(rollbackSnapshots)));
+  const rollbackAttempted =
+    failure !== null &&
+    !checkFailure &&
+    (rollbackSnapshots.length > 0 || createdDirectories.length > 0);
+  if (rollbackAttempted) {
+    const restoreWarnings = await restoreSnapshots(rollbackSnapshots);
+    rollbackWarnings.push(...restoreWarnings);
     for (const directory of [...createdDirectories].reverse()) {
       await rmdir(directory).catch(() => undefined);
     }
@@ -503,9 +503,7 @@ export async function applyChanges(
         "Package manifests and lockfiles were restored, but package-manager cache or node_modules changes may remain.",
       );
     }
-    rollbackSucceeded = rollbackWarnings.every((warning) =>
-      warning.includes("node_modules"),
-    );
+    rollbackSucceeded = restoreWarnings.length === 0;
     for (const result of operationResults) {
       if (result.outcome === "applied") result.outcome = "rolled_back";
     }
@@ -518,14 +516,16 @@ export async function applyChanges(
     plan_digest: planDigest,
     repository_root_fingerprint: rootFingerprint,
     outcome: failure
-      ? rollbackSucceeded
-        ? "rolled_back"
-        : "failed"
+      ? checkFailure
+        ? "failed"
+        : rollbackAttempted && rollbackSucceeded
+          ? "rolled_back"
+          : "failed"
       : "succeeded",
     operations: operationResults,
     rollback: {
-      attempted: failure !== null,
-      succeeded: failure === null || rollbackSucceeded,
+      attempted: rollbackAttempted,
+      succeeded: !rollbackAttempted || rollbackSucceeded,
       warnings: rollbackWarnings,
     },
     warnings: [

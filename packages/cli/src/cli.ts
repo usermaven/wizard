@@ -1,6 +1,16 @@
 #!/usr/bin/env node
 
-import { readFile, stat, writeFile } from "node:fs/promises";
+import { randomUUID } from "node:crypto";
+import {
+  chmod,
+  lstat,
+  readFile,
+  rename,
+  stat,
+  unlink,
+  writeFile,
+} from "node:fs/promises";
+import { dirname, join } from "node:path";
 import { createInterface } from "node:readline/promises";
 
 import {
@@ -12,10 +22,12 @@ import {
   digestSetupPlan,
   generateSetupPlan,
   inspectProject,
+  loadSetupPlanArtifact,
   previewChanges,
   resumeWorkflow,
   saveWorkflowCheckpoint,
   storeChangeApproval,
+  storeSetupPlanArtifact,
   verifySetup,
 } from "@usermaven/wizard-core";
 import {
@@ -41,20 +53,26 @@ Usage:
     --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>
     --tracking-plan <tracking-plan.json> --ai-instrumentation <changes.json>
     [--key-env-var <name>] [--tracking-host-env-var <name>] [--compact]
-  usermaven-wizard preview <setup-plan.json> [--compact]
-  usermaven-wizard approve <setup-plan.json> --operations <id,id> [--root <path>]
-    [--ttl-minutes <1-60>] [--output <approval.json>]
-  usermaven-wizard apply <setup-plan.json> --approval <approval.json>
+  usermaven-wizard preview [<setup-plan.json> | --plan-digest <digest>]
     [--root <path>] [--compact]
-  usermaven-wizard verification-session <setup-plan.json>
+  usermaven-wizard approve [<setup-plan.json> | --plan-digest <digest>]
+    --operations <id,id> [--root <path>]
+    [--ttl-minutes <1-60>] [--output <approval.json>]
+  usermaven-wizard apply [<setup-plan.json> | --plan-digest <digest>]
+    --approval <approval.json>
+    [--root <path>] [--compact]
+  usermaven-wizard verification-session [<setup-plan.json> | --plan-digest <digest>]
     --environment <name> [--ttl-minutes <1-60>] [--compact]
-  usermaven-wizard verify <setup-plan.json> --session <session.json>
+  usermaven-wizard verify [<setup-plan.json> | --plan-digest <digest>]
+    --session <session.json>
     --evidence <evidence.json> [--root <path>] [--compact]
   usermaven-wizard checkpoint [path] --step <workflow-step>
     [--workflow-id <id>] [--tracking-plan <path>] [--setup-plan <path>]
     [--approval <path>] [--apply-result <path>] [--session <path>]
     [--verification-result <path>] [--compact]
   usermaven-wizard resume [path] --workflow-id <id> [--compact]
+  usermaven-wizard setup [path] [--compact]
+  usermaven-wizard next [path] --workflow-id <id> [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
@@ -73,22 +91,62 @@ function parseArguments(arguments_: string[], allowedOptions: string[]) {
     if (argument === "--compact") {
       compact = true;
     } else if (argument.startsWith("--")) {
-      if (!allowedOptions.includes(argument)) {
-        throw new Error(`Unknown option: ${argument}`);
+      const equals = argument.indexOf("=");
+      const option = equals < 0 ? argument : argument.slice(0, equals);
+      if (!allowedOptions.includes(option)) {
+        throw new Error(`Unknown option: ${option}`);
       }
-      const value = arguments_[index + 1];
-      if (!value || value.startsWith("--")) {
-        throw new Error(`${argument} requires a value`);
+      const inlineValue = equals < 0 ? undefined : argument.slice(equals + 1);
+      const value = inlineValue ?? arguments_[index + 1];
+      if (!value || (inlineValue === undefined && value.startsWith("--"))) {
+        throw new Error(`${option} requires a value`);
       }
-      if (options.has(argument))
-        throw new Error(`${argument} may be provided only once`);
-      options.set(argument, value);
-      index += 1;
+      if (options.has(option))
+        throw new Error(`${option} may be provided only once`);
+      options.set(option, value);
+      if (inlineValue === undefined) index += 1;
     } else {
       positionals.push(argument);
     }
   }
   return { compact, options, positionals };
+}
+
+function integerOption(
+  options: Map<string, string>,
+  name: string,
+  fallback: number,
+  minimum: number,
+  maximum: number,
+): number {
+  const raw = options.get(name) ?? String(fallback);
+  if (!/^\d+$/u.test(raw))
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
+  const value = Number(raw);
+  if (!Number.isSafeInteger(value) || value < minimum || value > maximum)
+    throw new Error(`${name} must be an integer from ${minimum} to ${maximum}`);
+  return value;
+}
+
+async function writePrivateOutput(
+  path: string,
+  content: string,
+): Promise<void> {
+  try {
+    const item = await lstat(path);
+    if (item.isSymbolicLink() || !item.isFile())
+      throw new Error("Approval output target must be a regular file");
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+  }
+  const temporary = join(dirname(path), `.${randomUUID()}.wizard.tmp`);
+  await writeFile(temporary, content, { flag: "wx", mode: 0o600 });
+  try {
+    await rename(temporary, path);
+    await chmod(path, 0o600);
+  } finally {
+    await unlink(temporary).catch(() => undefined);
+  }
 }
 
 function requiredOption(options: Map<string, string>, name: string): string {
@@ -104,6 +162,28 @@ async function readJson(path: string, maximumBytes: number): Promise<unknown> {
     );
   }
   return JSON.parse(await readFile(path, "utf8"));
+}
+
+async function readSetupPlan(
+  positionals: string[],
+  options: Map<string, string>,
+  commandName: string,
+) {
+  const digest = options.get("--plan-digest");
+  if (positionals.length > 1 || (positionals.length === 1 && digest))
+    throw new Error(
+      `${commandName} accepts exactly one setup-plan path or --plan-digest`,
+    );
+  if (digest)
+    return loadSetupPlanArtifact(
+      options.get("--root") ?? process.cwd(),
+      digest,
+    );
+  if (positionals.length !== 1)
+    throw new Error(
+      `${commandName} requires a setup-plan path or --plan-digest`,
+    );
+  return setupPlanSchema.parse(await readJson(positionals[0]!, 5_000_000));
 }
 
 function parseTrustedWorkspaceKeys(value: unknown): Record<string, string> {
@@ -140,32 +220,43 @@ async function main(): Promise<void> {
       : command === "plan"
         ? ["--business-context", "--ai-proposal"]
         : command === "approve"
-          ? ["--root", "--operations", "--ttl-minutes", "--output"]
+          ? [
+              "--root",
+              "--operations",
+              "--ttl-minutes",
+              "--output",
+              "--plan-digest",
+            ]
           : command === "apply"
-            ? ["--root", "--approval"]
+            ? ["--root", "--approval", "--plan-digest"]
             : command === "verification-session"
-              ? ["--environment", "--ttl-minutes"]
+              ? ["--environment", "--ttl-minutes", "--root", "--plan-digest"]
               : command === "verify"
                 ? [
                     "--root",
                     "--session",
                     "--evidence",
                     "--trusted-workspace-keys",
+                    "--plan-digest",
                   ]
-                : command === "checkpoint"
-                  ? [
-                      "--step",
-                      "--workflow-id",
-                      "--tracking-plan",
-                      "--setup-plan",
-                      "--approval",
-                      "--apply-result",
-                      "--session",
-                      "--verification-result",
-                    ]
-                  : command === "resume"
-                    ? ["--workflow-id"]
-                    : [];
+                : command === "preview"
+                  ? ["--root", "--plan-digest"]
+                  : command === "checkpoint"
+                    ? [
+                        "--step",
+                        "--workflow-id",
+                        "--tracking-plan",
+                        "--setup-plan",
+                        "--approval",
+                        "--apply-result",
+                        "--session",
+                        "--verification-result",
+                      ]
+                    : command === "resume"
+                      ? ["--workflow-id"]
+                      : command === "next"
+                        ? ["--workflow-id"]
+                        : [];
   const parsed = parseArguments(flags, allowedOptions);
   const spacing = parsed.compact ? undefined : 2;
 
@@ -213,8 +304,9 @@ async function main(): Promise<void> {
       throw new Error("Setup-plan accepts at most one project path");
     const keyEnvVar = parsed.options.get("--key-env-var");
     const trackingHostEnvVar = parsed.options.get("--tracking-host-env-var");
+    const projectRoot = parsed.positionals[0] ?? process.cwd();
     const result = await generateSetupPlan({
-      projectRoot: parsed.positionals[0] ?? process.cwd(),
+      projectRoot,
       trackingPlan: setupPlanSchema.shape.tracking_plan.parse(
         await readJson(
           requiredOption(parsed.options, "--tracking-plan"),
@@ -241,39 +333,41 @@ async function main(): Promise<void> {
           : {}),
       },
     });
+    await storeSetupPlanArtifact(projectRoot, result);
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
   if (command === "preview") {
-    if (parsed.positionals.length !== 1)
-      throw new Error("Preview requires one setup-plan JSON path");
-    const planPath = parsed.positionals[0]!;
-    const plan = setupPlanSchema.parse(await readJson(planPath, 5_000_000));
+    const plan = await readSetupPlan(
+      parsed.positionals,
+      parsed.options,
+      "Preview",
+    );
     const result = previewChanges(plan);
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
   if (command === "approve") {
-    if (parsed.positionals.length !== 1)
-      throw new Error("Approve requires one setup-plan JSON path");
     if (!process.stdin.isTTY || !process.stdout.isTTY) {
       throw new Error("Approve requires an interactive terminal");
     }
-    const plan = setupPlanSchema.parse(
-      await readJson(parsed.positionals[0]!, 5_000_000),
+    const plan = await readSetupPlan(
+      parsed.positionals,
+      parsed.options,
+      "Approve",
     );
     const operationIds = requiredOption(parsed.options, "--operations")
       .split(",")
       .map((value) => value.trim())
       .filter(Boolean);
     const root = parsed.options.get("--root") ?? process.cwd();
-    const ttlMinutes = Number.parseInt(
-      parsed.options.get("--ttl-minutes") ?? "15",
-      10,
+    const ttlMinutes = integerOption(
+      parsed.options,
+      "--ttl-minutes",
+      15,
+      1,
+      60,
     );
-    if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 60) {
-      throw new Error("--ttl-minutes must be an integer from 1 to 60");
-    }
     const digest = digestSetupPlan(plan);
     const expected = approvalConfirmation(digest, operationIds);
     process.stdout.write(
@@ -299,23 +393,25 @@ async function main(): Promise<void> {
       { ttlMs: ttlMinutes * 60 * 1_000 },
     );
     const registryPath = await storeChangeApproval(root, result);
-    const serialized = `${JSON.stringify(result, null, 2)}\n`;
+    const serialized = `${JSON.stringify(result, null, spacing)}\n`;
     const output = parsed.options.get("--output");
     if (output) {
-      await writeFile(output, serialized, { flag: "wx", mode: 0o600 });
+      await writePrivateOutput(output, serialized);
       process.stdout.write(
         `Approval ${result.approval_id} written to ${output} and registered at ${registryPath}\n`,
       );
     } else {
-      process.stdout.write(serialized);
+      process.stdout.write(
+        `Approval ${result.approval_id} registered at ${registryPath}\n`,
+      );
     }
     return;
   }
   if (command === "apply") {
-    if (parsed.positionals.length !== 1)
-      throw new Error("Apply requires one setup-plan JSON path");
-    const plan = setupPlanSchema.parse(
-      await readJson(parsed.positionals[0]!, 5_000_000),
+    const plan = await readSetupPlan(
+      parsed.positionals,
+      parsed.options,
+      "Apply",
     );
     const approval = changeApprovalSchema.parse(
       await readJson(requiredOption(parsed.options, "--approval"), 1_000_000),
@@ -329,19 +425,18 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "verification-session") {
-    if (parsed.positionals.length !== 1) {
-      throw new Error("Verification-session requires one setup-plan JSON path");
-    }
-    const plan = setupPlanSchema.parse(
-      await readJson(parsed.positionals[0]!, 5_000_000),
+    const plan = await readSetupPlan(
+      parsed.positionals,
+      parsed.options,
+      "Verification-session",
     );
-    const ttlMinutes = Number.parseInt(
-      parsed.options.get("--ttl-minutes") ?? "30",
-      10,
+    const ttlMinutes = integerOption(
+      parsed.options,
+      "--ttl-minutes",
+      30,
+      1,
+      60,
     );
-    if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 60) {
-      throw new Error("--ttl-minutes must be an integer from 1 to 60");
-    }
     const result = createVerificationSession(
       {
         plan,
@@ -353,11 +448,10 @@ async function main(): Promise<void> {
     return;
   }
   if (command === "verify") {
-    if (parsed.positionals.length !== 1) {
-      throw new Error("Verify requires one setup-plan JSON path");
-    }
-    const plan = setupPlanSchema.parse(
-      await readJson(parsed.positionals[0]!, 5_000_000),
+    const plan = await readSetupPlan(
+      parsed.positionals,
+      parsed.options,
+      "Verify",
     );
     const session = verificationSessionSchema.parse(
       await readJson(requiredOption(parsed.options, "--session"), 1_000_000),
@@ -418,6 +512,31 @@ async function main(): Promise<void> {
   if (command === "resume") {
     if (parsed.positionals.length > 1)
       throw new Error("Resume accepts at most one project path");
+    const result = await resumeWorkflow(
+      parsed.positionals[0] ?? process.cwd(),
+      requiredOption(parsed.options, "--workflow-id"),
+    );
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "setup") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Setup accepts at most one project path");
+    const projectRoot = parsed.positionals[0] ?? process.cwd();
+    const inspection = await inspectProject(projectRoot);
+    const checkpoint = await saveWorkflowCheckpoint({
+      projectRoot,
+      completedStep: "inspection_completed",
+    });
+    const next = await resumeWorkflow(projectRoot, checkpoint.workflow_id);
+    process.stdout.write(
+      `${JSON.stringify({ inspection, checkpoint, next }, null, spacing)}\n`,
+    );
+    return;
+  }
+  if (command === "next") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Next accepts at most one project path");
     const result = await resumeWorkflow(
       parsed.positionals[0] ?? process.cwd(),
       requiredOption(parsed.options, "--workflow-id"),

@@ -7,6 +7,7 @@ import {
   setupPlanSchema,
   trackingPlanSchema,
   workspacePublicConfigSchema,
+  WIZARD_VERSION,
   type AiInstrumentationChange,
   type AiInstrumentationProposal,
   type ProjectInspection,
@@ -18,8 +19,8 @@ import {
 import { createTwoFilesPatch } from "diff";
 
 import { inspectProject } from "./inspector.js";
+import { validateSingleFileUnifiedDiff } from "./diff-validation.js";
 
-const WIZARD_VERSION = "0.11.0";
 const SDK_VERSION_RANGE = "^1.5.15";
 
 function boundedId(prefix: string, value: string): string {
@@ -75,27 +76,7 @@ function rejectSensitivePath(path: string): void {
 }
 
 function validateUnifiedDiffPath(diff: string, expectedPath: string): void {
-  if (
-    /^(?:diff --git|rename (?:from|to)|copy (?:from|to)|GIT binary patch)/mu.test(
-      diff,
-    )
-  ) {
-    throw new Error("AI instrumentation must use a single-file textual diff");
-  }
-  const paths = [...diff.matchAll(/^(?:---|\+\+\+)\s+([^\t\n]+)/gmu)].map(
-    (match) => match[1],
-  );
-  const accepted = new Set([
-    expectedPath,
-    `a/${expectedPath}`,
-    `b/${expectedPath}`,
-  ]);
-  if (
-    paths.length !== 2 ||
-    paths.some((path) => path !== "/dev/null" && !accepted.has(path!))
-  ) {
-    throw new Error("AI instrumentation diff path does not match its target");
-  }
+  validateSingleFileUnifiedDiff(diff, expectedPath);
 }
 
 async function validateInstrumentationChange(
@@ -564,7 +545,9 @@ export async function generateSetupPlan(
     });
   }
 
-  const command = buildCommand(inspection.project.package_manager);
+  const command = inspection.available_scripts.includes("build")
+    ? buildCommand(inspection.project.package_manager)
+    : null;
   if (command) {
     operations.push({
       id: "run-project-build",
@@ -628,33 +611,34 @@ export async function generateSetupPlan(
     },
     checks: [
       {
-        id: "sdk-present",
+        id: "sdk-declared",
         layer: "static",
-        description: "The approved Usermaven SDK version is installed",
+        description: "The approved Usermaven SDK dependency is declared",
         required: true,
       },
       {
-        id: "single-initialization",
+        id: "sdk-installed",
         layer: "static",
-        description: "Exactly one browser client is initialized",
+        description: "The approved Usermaven SDK is installed locally",
         required: true,
       },
-      ...trackingPlan.identity.map((identity, index) => ({
-        id: `identity-runtime-${index + 1}`,
-        layer: "runtime" as const,
-        description: `Reviewed ${identity.kind} identity executes at its approved trigger`,
-        required: true,
-      })),
-      ...trackingPlan.events.map((event) => ({
-        id: boundedId("event-runtime-", event.id),
-        layer: "runtime" as const,
-        description: `${event.event_name} executes once at its approved trigger`,
-        required: true,
-      })),
       {
-        id: "collector-accepted",
+        id: "public-config-references",
+        layer: "static",
+        description:
+          "Generated source references the selected public configuration",
+        required: true,
+      },
+      {
+        id: "runtime-observation",
+        layer: "runtime",
+        description: "Every reviewed runtime tracking signal is observed",
+        required: true,
+      },
+      {
+        id: "collector-transport",
         layer: "transport",
-        description: "The configured collector accepts a sanitized test event",
+        description: "The configured collector accepts every reviewed event",
         required: true,
       },
       {

@@ -78,6 +78,7 @@ export const projectInspectionSchema = z
     analytics_dependencies: z.array(analyticsDependencySchema).max(1_000),
     instrumentation: z.array(instrumentationOccurrenceSchema).max(10_000),
     entry_points: z.array(entryPointSchema).max(20).default([]),
+    available_scripts: z.array(z.string().min(1).max(128)).max(100).default([]),
     scan: z
       .object({
         files_considered: z.number().int().nonnegative(),

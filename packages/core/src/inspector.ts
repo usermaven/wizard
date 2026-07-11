@@ -4,12 +4,12 @@ import { extname, join, relative, resolve, sep } from "node:path";
 
 import {
   projectInspectionSchema,
+  WIZARD_VERSION,
   type AnalyticsProvider,
   type Framework,
   type ProjectInspection,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.11.0";
 const DEFAULT_MAX_FILES = 5_000;
 const DEFAULT_MAX_FILE_BYTES = 1_000_000;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000;
@@ -209,18 +209,30 @@ export interface InspectProjectOptions {
 interface PackageJson {
   dependencies: Record<string, string>;
   devDependencies: Record<string, string>;
+  scripts: Record<string, string>;
+  packageManager: string | null;
 }
 
 function normalizeRelative(root: string, path: string): string {
   return relative(root, path).split(sep).join("/");
 }
 
-function lineAt(content: string, index: number): number {
-  let line = 1;
-  for (let position = 0; position < index; position += 1) {
-    if (content.charCodeAt(position) === 10) line += 1;
+function lineOffsets(content: string): number[] {
+  const offsets = [0];
+  for (let index = 0; index < content.length; index += 1)
+    if (content.charCodeAt(index) === 10) offsets.push(index + 1);
+  return offsets;
+}
+
+function lineAt(offsets: number[], index: number): number {
+  let low = 0;
+  let high = offsets.length;
+  while (low < high) {
+    const middle = Math.floor((low + high) / 2);
+    if (offsets[middle]! <= index) low = middle + 1;
+    else high = middle;
   }
-  return line;
+  return low;
 }
 
 function stringRecord(value: unknown): Record<string, string> {
@@ -264,6 +276,11 @@ async function readPackageJson(
     return {
       dependencies: stringRecord(record.dependencies),
       devDependencies: stringRecord(record.devDependencies),
+      scripts: stringRecord(record.scripts),
+      packageManager:
+        typeof record.packageManager === "string"
+          ? record.packageManager
+          : null,
     };
   } catch (error) {
     const code = (error as NodeJS.ErrnoException).code;
@@ -286,7 +303,11 @@ async function regularPathExists(
 
 async function detectPackageManager(
   root: string,
+  packageJson: PackageJson | null,
 ): Promise<ProjectInspection["project"]["package_manager"]> {
+  const declared = packageJson?.packageManager?.split("@", 1)[0];
+  if (["npm", "pnpm", "yarn", "bun"].includes(declared ?? ""))
+    return declared as ProjectInspection["project"]["package_manager"];
   const candidates = [
     ["pnpm-lock.yaml", "pnpm"],
     ["yarn.lock", "yarn"],
@@ -294,8 +315,19 @@ async function detectPackageManager(
     ["bun.lockb", "bun"],
     ["package-lock.json", "npm"],
   ] as const;
-  for (const [file, manager] of candidates) {
-    if (await regularPathExists(join(root, file), "file")) return manager;
+  let directory = root;
+  for (let depth = 0; depth < 20; depth += 1) {
+    for (const [file, manager] of candidates) {
+      if (await regularPathExists(join(directory, file), "file"))
+        return manager;
+    }
+    const reachedRepositoryRoot = await regularPathExists(
+      join(directory, ".git"),
+      "directory",
+    );
+    const parent = resolve(directory, "..");
+    if (reachedRepositoryRoot || parent === directory) break;
+    directory = parent;
   }
   return (await regularPathExists(join(root, "package.json"), "file"))
     ? "npm"
@@ -526,7 +558,7 @@ export async function inspectProject(
   const warnings: string[] = [];
   const packageJson = await readPackageJson(root, warnings);
   const detected = await detectFramework(root, packageJson);
-  const packageManager = await detectPackageManager(root);
+  const packageManager = await detectPackageManager(root, packageJson);
   const entryPoints = await discoverEntryPoints(root, detected.framework);
   const analyticsDependencies: ProjectInspection["analytics_dependencies"] = [];
 
@@ -552,6 +584,9 @@ export async function inspectProject(
   const collected = await collectSourceFiles(root, maxFiles);
   warnings.push(...collected.warnings);
   const instrumentation: ProjectInspection["instrumentation"] = [];
+  const dependencyProviders = new Set(
+    analyticsDependencies.map((dependency) => dependency.provider),
+  );
   const seen = new Set<string>();
   let filesScanned = 0;
   let bytesScanned = 0;
@@ -572,13 +607,27 @@ export async function inspectProject(
       break;
     }
     const content = await readFile(file, "utf8");
+    const offsets = lineOffsets(content);
+    const fileProviders = new Set<AnalyticsProvider>();
+    for (const rule of tokenRules) {
+      if (rule.kind !== "import" && rule.kind !== "script") continue;
+      rule.pattern.lastIndex = 0;
+      if (rule.pattern.test(content)) fileProviders.add(rule.provider);
+    }
     bytesScanned += Buffer.byteLength(content);
     filesScanned += 1;
     const path = normalizeRelative(root, file);
     for (const rule of tokenRules) {
+      if (
+        rule.kind !== "import" &&
+        rule.kind !== "script" &&
+        !dependencyProviders.has(rule.provider) &&
+        !fileProviders.has(rule.provider)
+      )
+        continue;
       rule.pattern.lastIndex = 0;
       for (const match of content.matchAll(rule.pattern)) {
-        const line = lineAt(content, match.index);
+        const line = lineAt(offsets, match.index);
         const key = `${rule.provider}:${rule.kind}:${path}:${line}:${rule.token}`;
         if (seen.has(key)) continue;
         seen.add(key);
@@ -617,6 +666,7 @@ export async function inspectProject(
     analytics_dependencies: analyticsDependencies,
     instrumentation,
     entry_points: entryPoints,
+    available_scripts: Object.keys(packageJson?.scripts ?? {}).sort(),
     scan: {
       files_considered: collected.files.length,
       files_scanned: filesScanned,

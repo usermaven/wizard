@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, rm, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -103,6 +103,7 @@ describe("workflow checkpoints", () => {
     expect(resumed).toMatchObject({
       checkpoint_status: "ready",
       next_action: "generate_setup_plan",
+      suggested_command: expect.stringContaining("usermaven-wizard setup-plan"),
       reusable_artifacts: ["tracking_plan"],
       invalid_artifacts: [],
     });
@@ -134,6 +135,33 @@ describe("workflow checkpoints", () => {
       next_action: "generate_tracking_plan",
       invalid_artifacts: ["tracking_plan"],
     });
+  });
+
+  it("rejects artifact paths beneath symlinked parent directories", async () => {
+    const root = await project();
+    const external = await mkdtemp(join(tmpdir(), "wizard-workflow-external-"));
+    roots.push(external);
+    await writeFile(
+      join(external, "tracking.json"),
+      JSON.stringify(trackingPlan),
+    );
+    await symlink(external, join(root, "linked"));
+    const created = await saveWorkflowCheckpoint(
+      { projectRoot: root, completedStep: "inspection_completed" },
+      { now, idFactory: () => "symlink-checkpoint" },
+    );
+
+    await expect(
+      saveWorkflowCheckpoint(
+        {
+          projectRoot: root,
+          workflowId: created.workflow_id,
+          completedStep: "tracking_plan_created",
+          artifactPaths: { tracking_plan: "linked/tracking.json" },
+        },
+        { now },
+      ),
+    ).rejects.toThrow("unsafe parent");
   });
 
   it("requires a new approval after expiry", async () => {
@@ -174,6 +202,7 @@ describe("workflow checkpoints", () => {
     expect(resumed).toMatchObject({
       checkpoint_status: "expired",
       next_action: "request_approval",
+      suggested_command: expect.stringContaining("--plan-digest"),
     });
   });
 
@@ -221,5 +250,50 @@ describe("workflow checkpoints", () => {
       next_action: "inspect_apply_state",
     });
     expect(resumed.next_action).not.toBe("apply_changes");
+  });
+
+  it("returns recovery guidance for a corrupt apply completion record", async () => {
+    const root = await project();
+    const approval = await createChangeApproval(
+      {
+        projectRoot: root,
+        plan: setupPlan(),
+        operationIds: ["create-client"],
+        confirmedByInteractiveUser: true,
+      },
+      { now, idFactory: () => "corrupt-approval", ttlMs: 60_000 },
+    );
+    await writeFile(join(root, "approval.json"), JSON.stringify(approval), {
+      mode: 0o600,
+    });
+    const created = await saveWorkflowCheckpoint(
+      { projectRoot: root, completedStep: "inspection_completed" },
+      { now, idFactory: () => "corrupt-checkpoint" },
+    );
+    await saveWorkflowCheckpoint(
+      {
+        projectRoot: root,
+        workflowId: created.workflow_id,
+        completedStep: "approval_created",
+        artifactPaths: {
+          tracking_plan: "tracking-plan.json",
+          setup_plan: "setup-plan.json",
+          approval: "approval.json",
+        },
+      },
+      { now },
+    );
+    await mkdir(join(root, ".usermaven", "apply"));
+    await writeFile(
+      join(root, ".usermaven", "apply", `${approval.approval_id}.json`),
+      "not-json",
+      { mode: 0o600 },
+    );
+
+    const resumed = await resumeWorkflow(root, created.workflow_id, { now });
+    expect(resumed).toMatchObject({
+      checkpoint_status: "interrupted",
+      next_action: "inspect_apply_state",
+    });
   });
 });

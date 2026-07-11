@@ -14,7 +14,7 @@ and proof.
       receive fallback browser code.
 - [x] An MCP caller cannot mint or broaden an application approval.
 - [x] A verification pass cannot be created from unauthenticated evidence.
-- [ ] The full CLI and MCP flow can proceed through artifact references without
+- [x] The full CLI and MCP flow can proceed through artifact references without
       repeatedly embedding setup plans.
 - [ ] `npm run check`, focused end-to-end fixtures, package dry-runs, audit, and
       stdio MCP smoke all pass.
@@ -52,35 +52,42 @@ and proof.
 
 ## P1 — usable agent and human flow
 
-- [ ] **8:** sanitized typed MCP error taxonomy.
-- [ ] **9:** structured approval-required handoff with the exact local command.
-- [ ] **10:** checkpoint-backed artifact-by-reference MCP and CLI inputs.
+- [x] **8:** sanitized typed MCP error taxonomy with retryability and bounded
+      field details.
+- [x] **9:** structured approval-required handoff with operation IDs and the
+      exact local command.
+- [x] **10:** private digest-addressed setup-plan artifacts across MCP and CLI
+      preview, approval, apply, session preparation, and verification.
 - [ ] **11:** guided `setup` / `next` human flow and default private artifacts.
+      `setup` and `next` now provide resumable suggestions; the complete
+      orchestration loop remains open.
 - [ ] **12:** digest/entry-point edit affordances, automatic verification
       handoff, and safe environment-example assistance.
 
 ## P2 — correctness and robustness
 
-- [ ] **13:** parse only actual unified-diff headers.
-- [ ] **14:** emit build checks only when scripts exist and define check-failure
+- [x] **13:** parse only actual unified-diff headers.
+- [x] **14:** emit build checks only when scripts exist and define check-failure
       transaction semantics.
-- [ ] **15:** align proposal, operation, risk, and warning caps.
-- [ ] **16:** dependency-aware tokens and recognition of generated output.
-- [ ] **17:** workspace-aware upward package-manager discovery.
-- [ ] **18:** version-aware Yarn Modern install behavior.
+- [x] **15:** align proposal, operation, risk, and warning caps.
+- [x] **16:** dependency-aware tokens and recognition of generated output.
+- [x] **17:** workspace-aware upward package-manager discovery.
+- [x] **18:** version-aware Yarn Modern install behavior.
 - [ ] **19:** single-source version/tool manifest and correct approve metadata.
-- [ ] **20–22:** approval output and CLI parsing/TTL correctness.
-- [ ] **23:** corrupt apply records return recovery state instead of throwing.
-- [ ] **24–25:** explicit rollback outcomes and error-specific consumed checks.
-- [ ] **26:** reject symlinked artifact parent directories.
+- [ ] **20–22:** approval output and CLI parsing/TTL correctness. Approval output,
+      TTL parsing, and `--flag=value` are corrected; parser regression coverage
+      and missing-value diagnostics remain open.
+- [x] **23:** corrupt apply records return recovery state instead of throwing.
+- [x] **24–25:** explicit rollback outcomes and error-specific consumed checks.
+- [x] **26:** reject symlinked artifact parent directories.
 - [ ] **27:** stale-lock inspection and recovery tooling.
 - [ ] **28:** advertise representable output invariants and test runtime-only
       refinements separately.
-- [ ] **29:** flag AI-created source-derived content in previews.
-- [ ] **30:** enforce or remove decorative planned checks.
-- [ ] **31:** precompute source line offsets.
+- [x] **29:** flag AI-created source-derived content in previews.
+- [x] **30:** enforce or remove decorative planned checks.
+- [x] **31:** precompute source line offsets.
 - [ ] **32:** explicitly report scanned-but-unsupported frameworks.
-- [ ] **33:** graceful SIGTERM handling.
+- [x] **33:** graceful SIGTERM handling.
 
 ## Required regression matrix
 

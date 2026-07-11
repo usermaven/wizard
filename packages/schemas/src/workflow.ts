@@ -88,6 +88,7 @@ export const workflowResumeResultSchema = z
     last_completed_step: workflowStepSchema,
     next_action: workflowNextActionSchema,
     reason: z.string().min(1).max(2_000),
+    suggested_command: z.string().min(1).max(5_000).nullable(),
     reusable_artifacts: z.array(workflowArtifactKindSchema).max(6),
     invalid_artifacts: z.array(workflowArtifactKindSchema).max(6),
     warnings: z.array(z.string().min(1).max(1_000)).max(20),

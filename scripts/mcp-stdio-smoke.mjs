@@ -1,5 +1,6 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+import { rm } from "node:fs/promises";
 
 const transport = new StdioClientTransport({
   command: process.execPath,
@@ -129,20 +130,23 @@ try {
   });
   if (
     generated.isError ||
-    !Array.isArray(generated.structuredContent?.operations) ||
-    generated.structuredContent.operations.length < 1
+    typeof generated.structuredContent?.plan_digest !== "string" ||
+    generated.structuredContent.operation_count < 1
   ) {
     throw new Error("MCP setup-plan smoke call failed");
   }
   stage = "preview_changes";
   const previewed = await client.callTool({
     name: "preview_changes",
-    arguments: { setup_plan: generated.structuredContent },
+    arguments: {
+      project_path: "react-vite",
+      plan_digest: generated.structuredContent.plan_digest,
+    },
   });
   if (
     previewed.isError ||
     previewed.structuredContent?.summary?.total !==
-      generated.structuredContent.operations.length
+      generated.structuredContent.operation_count
   ) {
     throw new Error("MCP preview smoke call failed");
   }
@@ -150,7 +154,8 @@ try {
   const prepared = await client.callTool({
     name: "prepare_verification",
     arguments: {
-      setup_plan: generated.structuredContent,
+      project_path: "react-vite",
+      plan_digest: generated.structuredContent.plan_digest,
       environment: "smoke",
     },
   });
@@ -162,7 +167,7 @@ try {
     name: "verify_setup",
     arguments: {
       project_path: "react-vite",
-      setup_plan: generated.structuredContent,
+      plan_digest: generated.structuredContent.plan_digest,
       session: prepared.structuredContent,
       evidence: { session_id: prepared.structuredContent.session_id },
     },
@@ -180,4 +185,5 @@ try {
   throw error;
 } finally {
   await client.close();
+  await rm("fixtures/react-vite/.usermaven", { recursive: true, force: true });
 }

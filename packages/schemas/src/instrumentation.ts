@@ -66,6 +66,14 @@ export const aiInstrumentationProposalSchema = z
   })
   .strict()
   .superRefine((proposal, context) => {
+    if (proposal.changes.length + proposal.deferred.length > 90) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "AI instrumentation changes and deferrals must total at most 90 operations",
+        path: ["changes"],
+      });
+    }
     const ids = proposal.changes.map((change) => change.id);
     if (new Set(ids).size !== ids.length) {
       context.addIssue({

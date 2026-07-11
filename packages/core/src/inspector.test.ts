@@ -127,6 +127,23 @@ describe("inspectProject", () => {
     expect(result.scan.skipped_symlinks).toBe(1);
   });
 
+  it("does not attribute generic analytics or gtag calls without provider evidence", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-inspector-tokens-"));
+    temporaryRoots.push(root);
+    await mkdir(join(root, "src"));
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ dependencies: {} }),
+    );
+    await writeFile(
+      join(root, "src", "generic.ts"),
+      "analytics.track('internal');\ngtag('event', 'internal');\n",
+    );
+
+    const result = await inspectProject(root, { now });
+    expect(result.instrumentation).toEqual([]);
+  });
+
   it("does not follow a package manifest symlink", async () => {
     const root = await mkdtemp(join(tmpdir(), "wizard-inspector-"));
     const external = await mkdtemp(join(tmpdir(), "wizard-external-"));
@@ -144,5 +161,21 @@ describe("inspectProject", () => {
     expect(result.warnings).toContain(
       "package.json is not a regular local file and was skipped",
     );
+  });
+
+  it("uses an ancestor workspace lockfile for a nested package", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-monorepo-"));
+    temporaryRoots.push(root);
+    await mkdir(join(root, ".git"));
+    await writeFile(join(root, "pnpm-lock.yaml"), "lockfileVersion: '9.0'\n");
+    const child = join(root, "packages", "app");
+    await mkdir(child, { recursive: true });
+    await writeFile(
+      join(child, "package.json"),
+      JSON.stringify({ dependencies: { react: "19.2.7", vite: "8.1.4" } }),
+    );
+
+    const result = await inspectProject(child, { now });
+    expect(result.project.package_manager).toBe("pnpm");
   });
 });

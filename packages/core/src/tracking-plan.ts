@@ -5,6 +5,7 @@ import {
   businessContextSchema,
   projectInspectionSchema,
   trackingPlanSchema,
+  WIZARD_VERSION,
   type AiTrackingProposal,
   type BusinessContext,
   type ProjectInspection,
@@ -13,7 +14,6 @@ import {
 
 import { canonicalJsonDigest } from "./canonical.js";
 
-const WIZARD_VERSION = "0.11.0";
 const PROMPT_VERSION = "ai-tracking-plan-v1";
 
 function digestBusinessContext(context: BusinessContext): string {

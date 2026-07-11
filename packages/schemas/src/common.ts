@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 export const schemaVersion = z.literal("1");
+export const WIZARD_VERSION = "0.11.0";
 export const isoDateTime = z.iso.datetime({ offset: true });
 export const relativePath = z
   .string()

@@ -96,11 +96,25 @@ function artifactCandidate(root: string, artifactPath: string): string {
   return candidate;
 }
 
+async function assertSafeArtifactParents(
+  root: string,
+  artifactPath: string,
+): Promise<void> {
+  let current = root;
+  for (const segment of artifactPath.split("/").slice(0, -1)) {
+    current = join(current, segment);
+    const item = await lstat(current);
+    if (item.isSymbolicLink() || !item.isDirectory())
+      throw new Error("Workflow artifact path has an unsafe parent directory");
+  }
+}
+
 async function readArtifact(
   root: string,
   artifactPath: string,
 ): Promise<unknown> {
   const candidate = artifactCandidate(root, artifactPath);
+  await assertSafeArtifactParents(root, artifactPath);
   const item = await lstat(candidate);
   if (item.isSymbolicLink() || !item.isFile())
     throw new Error("Workflow artifact must be a regular file");
@@ -393,13 +407,48 @@ export async function resumeWorkflow(
     checkpoint_status: string,
     next_action: string,
     reason: string,
-  ) =>
-    workflowResumeResultSchema.parse({
+  ) => {
+    const setupDigest = checkpoint.artifacts.setup_plan?.digest;
+    const operationIds = parsed.setup_plan?.operations
+      .filter((operation) => operation.requires_approval)
+      .map((operation) => operation.id)
+      .join(",");
+    const suggestedCommands: Record<string, string | undefined> = {
+      generate_tracking_plan:
+        "usermaven-wizard plan . --business-context business-context.json --ai-proposal ai-proposal.json",
+      generate_setup_plan: checkpoint.artifacts.tracking_plan
+        ? `usermaven-wizard setup-plan . --tracking-plan ${checkpoint.artifacts.tracking_plan.path} --ai-instrumentation ai-instrumentation.json --workspace-name <name> --region <region> --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>`
+        : undefined,
+      preview_changes: setupDigest
+        ? `usermaven-wizard preview --root . --plan-digest ${setupDigest}`
+        : undefined,
+      request_approval:
+        setupDigest && operationIds
+          ? `usermaven-wizard approve --root . --plan-digest ${setupDigest} --operations ${operationIds}`
+          : undefined,
+      apply_changes:
+        setupDigest && checkpoint.artifacts.approval
+          ? `usermaven-wizard apply --root . --plan-digest ${setupDigest} --approval ${checkpoint.artifacts.approval.path}`
+          : undefined,
+      prepare_verification: setupDigest
+        ? `usermaven-wizard verification-session --root . --plan-digest ${setupDigest} --environment <environment>`
+        : undefined,
+      collect_verification_evidence:
+        "Collect signed runtime, transport, and workspace receipt evidence for the active verification session.",
+      inspect_apply_state:
+        "Inspect .usermaven/apply and the working tree; do not replay the uncertain approval.",
+      remediate_setup:
+        "Inspect verification/apply failures, update instrumentation, and start a new exact plan and approval.",
+      complete: undefined,
+    };
+    return workflowResumeResultSchema.parse({
       ...base,
       checkpoint_status,
       next_action,
       reason,
+      suggested_command: suggestedCommands[next_action] ?? null,
     });
+  };
   if (invalid.length > 0)
     return result(
       "stale",
@@ -458,9 +507,18 @@ export async function resumeWorkflow(
           "The apply completion record is not a safe regular state file; do not replay the approval.",
         );
       }
-      const recorded = applyResultSchema.parse(
-        JSON.parse(await readFile(recordPath, "utf8")),
-      );
+      let recorded: ApplyResult;
+      try {
+        recorded = applyResultSchema.parse(
+          JSON.parse(await readFile(recordPath, "utf8")),
+        );
+      } catch {
+        return result(
+          "interrupted",
+          "inspect_apply_state",
+          "The apply completion record is corrupt or invalid; do not replay the approval.",
+        );
+      }
       const setup = parsed.setup_plan;
       if (
         recorded.approval_id !== approval.approval_id ||

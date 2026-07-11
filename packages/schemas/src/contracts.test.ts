@@ -84,6 +84,23 @@ describe("public contracts", () => {
     ).toBe(false);
   });
 
+  it("reserves setup operation capacity for deterministic operations", () => {
+    const deferred = Array.from({ length: 91 }, (_, index) => ({
+      item: { kind: "event" as const, event_id: `event-${index}` },
+      reason: "Deferred for a bounded-cap test",
+    }));
+    expect(
+      aiInstrumentationProposalSchema.safeParse({
+        schema_version: "1",
+        tracking_plan_id: "plan_12345678",
+        changes: [],
+        deferred,
+        warnings: [],
+        generated_by: { provider: "test", model: "test-model" },
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts a complete setup plan", () => {
     const result = setupPlanSchema.safeParse({
       schema_version: "1",

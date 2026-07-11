@@ -136,7 +136,7 @@ export const aiTrackingProposalSchema = z
     events: z.array(eventCandidateSchema).min(1).max(75),
     shared_properties: z.array(propertyDefinitionSchema).max(100),
     assumptions: z.array(z.string().min(1).max(1_000)).max(50),
-    warnings: z.array(z.string().min(1).max(1_000)).max(50),
+    warnings: z.array(z.string().min(1).max(1_000)).max(47),
     generated_by: z
       .object({
         provider: z.string().min(1).max(128),

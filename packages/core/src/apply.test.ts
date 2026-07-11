@@ -195,7 +195,7 @@ describe("applyChanges", () => {
     ).rejects.toThrow("already been consumed");
   });
 
-  it("rolls back a created file when an approved check fails", async () => {
+  it("preserves applied files for inspection when only a check fails", async () => {
     const root = await project();
     const plan = await generatedPlan(root);
     const approved = await approval(root, plan, [
@@ -212,10 +212,13 @@ describe("applyChanges", () => {
       },
     );
 
-    expect(result.outcome).toBe("rolled_back");
-    await expect(access(join(root, "src", "usermaven.ts"))).rejects.toThrow();
+    expect(result.outcome).toBe("failed");
+    expect(await readFile(join(root, "src", "usermaven.ts"), "utf8")).toContain(
+      "usermavenClient",
+    );
+    expect(result.rollback.attempted).toBe(false);
     expect(result.operations).toEqual([
-      expect.objectContaining({ outcome: "rolled_back" }),
+      expect.objectContaining({ outcome: "applied" }),
       expect.objectContaining({ outcome: "failed" }),
     ]);
   });
@@ -250,6 +253,39 @@ describe("applyChanges", () => {
         cwd: root,
       },
     ]);
+  });
+
+  it("uses Yarn Modern configuration instead of its removed ignore-scripts flag", async () => {
+    const root = await project();
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({
+        name: "yarn-modern-fixture",
+        packageManager: "yarn@4.9.2",
+        scripts: { build: "echo build" },
+        dependencies: { react: "19.2.7", vite: "8.1.4" },
+      }),
+    );
+    const plan = await generatedPlan(root);
+    const approved = await approval(root, plan, ["install-usermaven-sdk"]);
+    const commands: CommandSpec[] = [];
+    const result = await applyChanges(
+      { projectRoot: root, plan, approval: approved },
+      {
+        now: fixedNow,
+        commandRunner: async (command) => {
+          commands.push(command);
+        },
+      },
+    );
+
+    expect(result.outcome).toBe("succeeded");
+    expect(commands[0]).toMatchObject({
+      command: "yarn",
+      args: ["add", "@usermaven/sdk-js@^1.5.15"],
+      env: { YARN_ENABLE_SCRIPTS: "false" },
+    });
+    expect(commands[0]!.args).not.toContain("--ignore-scripts");
   });
 
   it("restores package metadata after a partial install failure", async () => {
@@ -306,7 +342,7 @@ describe("applyChanges", () => {
       { now: fixedNow },
     );
 
-    expect(result.outcome).toBe("rolled_back");
+    expect(result.outcome).toBe("failed");
     expect(await readFile(target, "utf8")).toBe("export const value = 3;\n");
   });
 
@@ -388,7 +424,7 @@ describe("applyChanges", () => {
       { now: fixedNow },
     );
 
-    expect(result.outcome).toBe("rolled_back");
+    expect(result.outcome).toBe("failed");
     await expect(access(join(external, "out.ts"))).rejects.toThrow();
   });
 
@@ -415,7 +451,7 @@ describe("applyChanges", () => {
       { now: fixedNow },
     );
 
-    expect(result.outcome).toBe("rolled_back");
+    expect(result.outcome).toBe("failed");
     await expect(access(join(root, ".env.local"))).rejects.toThrow();
   });
 

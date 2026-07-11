@@ -14,6 +14,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import {
   createChangeApproval,
+  loadSetupPlanArtifact,
   storeChangeApproval,
 } from "@usermaven/wizard-core";
 import {
@@ -21,6 +22,7 @@ import {
   changePreviewSchema,
   projectInspectionSchema,
   setupPlanSchema,
+  setupPlanArtifactReferenceSchema,
   trackingPlanSchema,
   verificationResultSchema,
   verificationSessionSchema,
@@ -28,7 +30,7 @@ import {
   workflowResumeResultSchema,
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it } from "vitest";
 
 import { createWizardMcpServer, resolveProjectPath } from "./mcp-server.js";
 
@@ -70,6 +72,17 @@ const aiProposal = {
   warnings: [],
   generated_by: { provider: "mcp-client", model: "test-model" },
 };
+
+afterEach(async () => {
+  await Promise.all(
+    ["react-vite", "next-app-router", "next-pages-router"].map((fixture) =>
+      rm(join(fixtures, fixture, ".usermaven"), {
+        recursive: true,
+        force: true,
+      }),
+    ),
+  );
+});
 
 async function connectedServer(root: string) {
   const server = await createWizardMcpServer({ root });
@@ -133,7 +146,9 @@ describe("local MCP server", () => {
       ]);
       const readOnlyTools = tools.filter(
         (tool) =>
-          tool.name !== "apply_changes" && tool.name !== "checkpoint_workflow",
+          tool.name !== "apply_changes" &&
+          tool.name !== "checkpoint_workflow" &&
+          tool.name !== "generate_setup_plan",
       );
       expect(
         readOnlyTools.every(
@@ -159,6 +174,9 @@ describe("local MCP server", () => {
         idempotentHint: false,
         openWorldHint: false,
       });
+      expect(
+        tools.find((tool) => tool.name === "generate_setup_plan")?.annotations,
+      ).toMatchObject({ readOnlyHint: false, destructiveHint: false });
     } finally {
       await client.close();
       await server.close();
@@ -242,6 +260,7 @@ describe("local MCP server", () => {
       });
 
       expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("invalid_project_path");
       expect(JSON.stringify(result)).not.toContain("/root/projects");
     } finally {
       await client.close();
@@ -267,10 +286,19 @@ describe("local MCP server", () => {
           ai_instrumentation: generatedInstrumentation(trackingPlan),
         },
       });
-      const plan = setupPlanSchema.parse(generated.structuredContent);
+      const artifact = setupPlanArtifactReferenceSchema.parse(
+        generated.structuredContent,
+      );
+      const plan = await loadSetupPlanArtifact(
+        join(fixtures, "react-vite"),
+        artifact.plan_digest,
+      );
       const previewed = await client.callTool({
         name: "preview_changes",
-        arguments: { setup_plan: plan },
+        arguments: {
+          project_path: "react-vite",
+          plan_digest: artifact.plan_digest,
+        },
       });
       const preview = changePreviewSchema.parse(previewed.structuredContent);
 
@@ -295,7 +323,11 @@ describe("local MCP server", () => {
 
       const prepared = await client.callTool({
         name: "prepare_verification",
-        arguments: { setup_plan: plan, environment: "test" },
+        arguments: {
+          project_path: "react-vite",
+          plan_digest: artifact.plan_digest,
+          environment: "test",
+        },
       });
       const session = verificationSessionSchema.parse(
         prepared.structuredContent,
@@ -304,7 +336,7 @@ describe("local MCP server", () => {
         name: "verify_setup",
         arguments: {
           project_path: "react-vite",
-          setup_plan: plan,
+          plan_digest: artifact.plan_digest,
           session,
           evidence: { session_id: session.session_id },
         },
@@ -341,10 +373,34 @@ describe("local MCP server", () => {
       });
 
       expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("validation_failed");
       expect(JSON.stringify(result)).not.toContain("actual-workspace-key");
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it("returns a retryable typed error for a missing plan artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-mcp-missing-artifact-"));
+    const { client, server } = await connectedServer(root);
+    try {
+      const result = await client.callTool({
+        name: "preview_changes",
+        arguments: { plan_digest: `sha256:${"a".repeat(64)}` },
+      });
+
+      expect(result.isError).toBe(true);
+      expect(JSON.stringify(result)).toContain("artifact_not_found");
+      const content = (
+        result as { content: Array<{ type: string; text: string }> }
+      ).content;
+      expect(JSON.parse(content[0]!.text).error.retryable).toBe(true);
+      expect(JSON.stringify(result)).not.toContain(root);
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(root, { recursive: true });
     }
   });
 
@@ -375,7 +431,19 @@ describe("local MCP server", () => {
           ai_instrumentation: generatedInstrumentation(trackingPlan),
         },
       });
-      const plan = setupPlanSchema.parse(generated.structuredContent);
+      const artifact = setupPlanArtifactReferenceSchema.parse(
+        generated.structuredContent,
+      );
+      const plan = await loadSetupPlanArtifact(root, artifact.plan_digest);
+      const approvalRequired = await client.callTool({
+        name: "apply_changes",
+        arguments: { plan_digest: artifact.plan_digest },
+      });
+      expect(approvalRequired.isError).toBe(true);
+      expect(JSON.stringify(approvalRequired)).toContain("approval_required");
+      expect(JSON.stringify(approvalRequired)).toContain(
+        "usermaven-wizard approve",
+      );
       const approval = await createChangeApproval({
         plan,
         projectRoot: root,
@@ -388,7 +456,10 @@ describe("local MCP server", () => {
       await storeChangeApproval(root, approval);
       const applied = await client.callTool({
         name: "apply_changes",
-        arguments: { setup_plan: plan, approval_id: approval.approval_id },
+        arguments: {
+          plan_digest: artifact.plan_digest,
+          approval_id: approval.approval_id,
+        },
       });
       const result = applyResultSchema.parse(applied.structuredContent);
 
