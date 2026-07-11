@@ -33,7 +33,7 @@ const mutating = (
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.7.0",
+  version: "0.8.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -48,7 +48,7 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     ),
     readOnly(
       "setup-plan",
-      "Generate an approval-ready SDK setup plan without changing files.",
+      "Generate approval-ready SDK and AI instrumentation operations without changing files.",
       "implemented",
     ),
     readOnly(
@@ -88,7 +88,7 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     ),
     readOnly(
       "generate_setup_plan",
-      "Create an approval-ready setup plan.",
+      "Create approval-ready SDK and source-aware AI instrumentation operations.",
       "implemented",
     ),
     readOnly(

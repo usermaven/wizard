@@ -3,7 +3,11 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { setupPlanSchema, trackingPlanSchema } from "@usermaven/wizard-schemas";
+import {
+  setupPlanSchema,
+  trackingPlanSchema,
+  type AiInstrumentationProposal,
+} from "@usermaven/wizard-schemas";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { previewChanges } from "./change-preview.js";
@@ -80,8 +84,37 @@ const trackingPlan = trackingPlanSchema.parse({
     },
   },
   created_at: "2026-07-11T13:00:00Z",
-  wizard_version: "0.7.0",
+  wizard_version: "0.8.0",
 });
+function instrumentationProposal(
+  plan = trackingPlan,
+  path = "src/generated-usermaven-tracking.ts",
+): AiInstrumentationProposal {
+  return {
+    schema_version: "1" as const,
+    tracking_plan_id: plan.plan_id,
+    changes: [
+      {
+        id: "generate-tracking-hooks",
+        type: "create_file" as const,
+        summary: "Create reviewed Usermaven tracking hooks",
+        path,
+        content: 'export const trackingEvents = ["link_created"] as const;\n',
+        covers: [
+          {
+            kind: "identity" as const,
+            identity_kind: "user" as const,
+            identifier: "user_id",
+          },
+          { kind: "event" as const, event_id: "link-created" },
+        ],
+      },
+    ],
+    deferred: [],
+    warnings: [],
+    generated_by: { provider: "test", model: "test-coding-model" },
+  };
+}
 
 afterEach(async () => {
   await Promise.all(
@@ -92,7 +125,12 @@ afterEach(async () => {
 describe("generateSetupPlan", () => {
   it("generates an approval-ready React/Vite plan without a key value", async () => {
     const plan = await generateSetupPlan(
-      { projectRoot: join(fixtures, "react-vite"), workspace, trackingPlan },
+      {
+        projectRoot: join(fixtures, "react-vite"),
+        workspace,
+        trackingPlan,
+        instrumentationProposal: instrumentationProposal(),
+      },
       options,
     );
 
@@ -102,8 +140,7 @@ describe("generateSetupPlan", () => {
       "install_package",
       "create_file",
       "manual_step",
-      "manual_step",
-      "manual_step",
+      "create_file",
       "run_check",
     ]);
     expect(
@@ -117,7 +154,16 @@ describe("generateSetupPlan", () => {
     expect(serialized).not.toContain("actual-workspace-key");
     expect(
       plan.operations.filter((operation) => operation.requires_approval),
-    ).toHaveLength(3);
+    ).toHaveLength(4);
+    expect(plan.instrumentation?.generated_by.model).toBe("test-coding-model");
+    expect(plan.instrumentation?.coverage).toEqual([
+      expect.objectContaining({
+        operation_id: "instrument-generate-tracking-hooks",
+        items: expect.arrayContaining([
+          { kind: "event", event_id: "link-created" },
+        ]),
+      }),
+    ]);
   });
 
   it("uses Next.js public environment names and an App Router target", async () => {
@@ -136,6 +182,10 @@ describe("generateSetupPlan", () => {
         projectRoot: join(fixtures, "next-app-router"),
         workspace,
         trackingPlan: nextTrackingPlan,
+        instrumentationProposal: instrumentationProposal(
+          nextTrackingPlan,
+          "app/generated-usermaven-tracking.ts",
+        ),
       },
       options,
     );
@@ -164,12 +214,21 @@ describe("generateSetupPlan", () => {
     );
 
     const plan = await generateSetupPlan(
-      { projectRoot: root, workspace, trackingPlan },
+      {
+        projectRoot: root,
+        workspace,
+        trackingPlan,
+        instrumentationProposal: instrumentationProposal(),
+      },
       options,
     );
 
     expect(
-      plan.operations.some((operation) => operation.type === "create_file"),
+      plan.operations.some(
+        (operation) =>
+          operation.type === "create_file" &&
+          operation.path === "src/usermaven.ts",
+      ),
     ).toBe(false);
     expect(plan.operations).toEqual(
       expect.arrayContaining([
@@ -188,6 +247,7 @@ describe("generateSetupPlan", () => {
         {
           projectRoot: join(fixtures, "react-vite"),
           trackingPlan,
+          instrumentationProposal: instrumentationProposal(),
           workspace: {
             ...workspace,
             key: "actual-workspace-key",
@@ -204,6 +264,7 @@ describe("generateSetupPlan", () => {
         {
           projectRoot: join(fixtures, "react-vite"),
           trackingPlan,
+          instrumentationProposal: instrumentationProposal(),
           workspace: {
             ...workspace,
             tracking_host: "http://events.example.com",
@@ -231,25 +292,89 @@ describe("generateSetupPlan", () => {
           projectRoot: join(fixtures, "react-vite"),
           workspace,
           trackingPlan: legacy,
+          instrumentationProposal: instrumentationProposal(legacy),
         },
         options,
       ),
     ).rejects.toThrow("requires an AI-generated tracking plan");
+  });
+
+  it("requires every AI tracking item to be implemented or deferred", async () => {
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: join(fixtures, "react-vite"),
+          workspace,
+          trackingPlan,
+          instrumentationProposal: {
+            ...instrumentationProposal(),
+            changes: [],
+          },
+        },
+        options,
+      ),
+    ).rejects.toThrow("implement or explicitly defer every");
+  });
+
+  it("rejects stale and protected AI instrumentation targets", async () => {
+    const stale = instrumentationProposal();
+    stale.changes = [
+      {
+        id: "edit-main",
+        type: "edit_file",
+        summary: "Instrument the application entry",
+        path: "src/main.jsx",
+        before_hash: `sha256:${"0".repeat(64)}`,
+        unified_diff:
+          "--- a/src/main.jsx\n+++ b/src/main.jsx\n@@ -1 +1 @@\n-old\n+new\n",
+        covers: instrumentationProposal().changes[0]!.covers,
+      },
+    ];
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: join(fixtures, "react-vite"),
+          workspace,
+          trackingPlan,
+          instrumentationProposal: stale,
+        },
+        options,
+      ),
+    ).rejects.toThrow("hash is stale");
+
+    const protectedTarget = instrumentationProposal();
+    protectedTarget.changes[0]!.path = ".env.local";
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: join(fixtures, "react-vite"),
+          workspace,
+          trackingPlan,
+          instrumentationProposal: protectedTarget,
+        },
+        options,
+      ),
+    ).rejects.toThrow("protected local path");
   });
 });
 
 describe("previewChanges", () => {
   it("renders every operation without executing it", async () => {
     const plan = await generateSetupPlan(
-      { projectRoot: join(fixtures, "react-vite"), workspace, trackingPlan },
+      {
+        projectRoot: join(fixtures, "react-vite"),
+        workspace,
+        trackingPlan,
+        instrumentationProposal: instrumentationProposal(),
+      },
       options,
     );
     const preview = previewChanges(plan);
 
     expect(preview.summary).toEqual({
-      total: 6,
-      mutations: 2,
-      manual_steps: 3,
+      total: 5,
+      mutations: 3,
+      manual_steps: 1,
       checks: 1,
     });
     expect(preview.items[0]?.preview).toBe(

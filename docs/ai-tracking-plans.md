@@ -18,8 +18,28 @@ host and prevents the wizard from silently uploading repository source.
    `business_context`, and generated `ai_proposal`.
 5. Review the returned plan. All identity and event items remain `proposed` and
    `review_required`; validation is not business approval.
-6. Pass the unchanged reviewed plan to `generate_setup_plan` as
-   `tracking_plan`.
+6. Inspect the source locations for every reviewed item and generate an
+   `ai_instrumentation` proposal containing bounded file creates/edits. Edits
+   must include the current SHA-256 preimage hash and a single-file unified diff.
+7. Call `generate_setup_plan` with the unchanged `tracking_plan` and
+   `ai_instrumentation`. Every tracking item must be covered by a change or
+   explicitly deferred with a reason.
+
+## Instrumentation instructions for an agent
+
+```text
+Implement the reviewed tracking plan using the existing project conventions and
+the generated singleton Usermaven client. Make the smallest source changes that
+cover each identity and event. For an existing file, compute its current
+sha256:<hex> hash and return one textual unified diff whose ---/+++ paths exactly
+match the repository-relative target. For a new file, return its complete
+bounded content. Declare every tracking item covered by each change. If a safe,
+concrete implementation point cannot be verified, defer that item with a clear
+reason; never invent a trigger. Do not touch environment files, credentials,
+dependency directories, .git, or .usermaven. Do not include secrets or
+unapproved properties. Do not run or apply the changes—the wizard will preview
+them and require separate interactive approval.
+```
 
 ## Planning instructions for an agent
 
@@ -87,7 +107,8 @@ usermaven-wizard setup-plan . \
   --region us \
   --key-fingerprint sha256:example \
   --tracking-host https://events.example.com \
-  --tracking-plan tracking-plan.json > setup-plan.json
+  --tracking-plan tracking-plan.json \
+  --ai-instrumentation ai-instrumentation.json > setup-plan.json
 ```
 
 The final plan stores model provenance and a SHA-256 digest of business context,
@@ -96,8 +117,10 @@ reviewing a new plan.
 
 The repository includes starting files at
 [`examples/business-context.json`](../examples/business-context.json) and
-[`examples/ai-proposal.json`](../examples/ai-proposal.json). They demonstrate
-the contract, not a recommended taxonomy for every product.
+[`examples/ai-proposal.json`](../examples/ai-proposal.json), plus an
+[`examples/ai-instrumentation.json`](../examples/ai-instrumentation.json)
+template. Replace its tracking-plan ID and generated content; these files
+demonstrate the contract, not a recommended taxonomy for every product.
 
 ## Safety guarantees and limits
 
@@ -112,5 +135,7 @@ the contract, not a recommended taxonomy for every product.
   correct. Human review remains mandatory before setup and application.
 - `generated_by` is provenance asserted by the agent host; the local wizard does
   not cryptographically attest the model identity.
+- Instrumentation rejects stale hashes, mismatched diff paths, protected paths,
+  duplicate target paths, unknown coverage, and missing/deferred items.
 - Legacy deterministic plans remain parseable so previously approved 0.6 setup
-  artifacts can be consumed, but 0.7 cannot generate a new setup plan from one.
+  artifacts can be consumed, but 0.8 cannot generate a new setup plan from one.

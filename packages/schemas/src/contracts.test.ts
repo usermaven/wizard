@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   agentEventSchema,
+  aiInstrumentationProposalSchema,
   eventCandidateSchema,
   projectInspectionSchema,
   relativePath,
@@ -52,6 +53,35 @@ const trackingPlan = {
 };
 
 describe("public contracts", () => {
+  it("requires unique bounded AI instrumentation targets", () => {
+    const change = {
+      id: "wire-checkout",
+      type: "create_file" as const,
+      summary: "Wire checkout tracking",
+      path: "src/checkout-tracking.ts",
+      content: "export {};",
+      covers: [{ kind: "event" as const, event_id: "checkout-completed" }],
+    };
+    const proposal = {
+      schema_version: "1",
+      tracking_plan_id: "plan_12345678",
+      changes: [change],
+      deferred: [],
+      warnings: [],
+      generated_by: { provider: "test", model: "test-model" },
+    };
+
+    expect(aiInstrumentationProposalSchema.safeParse(proposal).success).toBe(
+      true,
+    );
+    expect(
+      aiInstrumentationProposalSchema.safeParse({
+        ...proposal,
+        changes: [change, { ...change, id: "wire-checkout-again" }],
+      }).success,
+    ).toBe(false);
+  });
+
   it("accepts a complete setup plan", () => {
     const result = setupPlanSchema.safeParse({
       schema_version: "1",
@@ -142,6 +172,8 @@ describe("public contracts", () => {
 
   it("rejects path traversal", () => {
     expect(relativePath.safeParse("../secrets.env").success).toBe(false);
+    expect(relativePath.safeParse("C:\\secrets.env").success).toBe(false);
+    expect(relativePath.safeParse("src\\analytics.ts").success).toBe(false);
     expect(relativePath.safeParse("src/analytics.ts").success).toBe(true);
   });
 

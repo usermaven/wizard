@@ -2,6 +2,10 @@ import { z } from "zod";
 
 import { isoDateTime, relativePath, schemaVersion } from "./common.js";
 import { trackingPlanSchema } from "./tracking-plan.js";
+import {
+  deferredTrackingItemSchema,
+  trackingItemReferenceSchema,
+} from "./instrumentation.js";
 
 const operationBase = z.object({
   id: z.string().min(1).max(128),
@@ -112,6 +116,29 @@ export const setupPlanSchema = z
       .strict(),
     operations: z.array(operationSchema).max(100),
     tracking_plan: trackingPlanSchema,
+    instrumentation: z
+      .object({
+        generated_by: z
+          .object({
+            provider: z.string().min(1).max(128),
+            model: z.string().min(1).max(256),
+          })
+          .strict(),
+        coverage: z
+          .array(
+            z
+              .object({
+                operation_id: z.string().min(1).max(128),
+                items: z.array(trackingItemReferenceSchema).min(1).max(100),
+              })
+              .strict(),
+          )
+          .max(100),
+        deferred: z.array(deferredTrackingItemSchema).max(100),
+        warnings: z.array(z.string().min(1).max(1_000)).max(50),
+      })
+      .strict()
+      .optional(),
     checks: z.array(plannedCheckSchema).max(100),
     risks: z.array(z.string().min(1).max(2_000)).max(100),
     created_at: isoDateTime,
@@ -125,6 +152,75 @@ export const setupPlanSchema = z
         code: "custom",
         message: "operation IDs must be unique",
         path: ["operations"],
+      });
+    }
+    if (!plan.instrumentation) return;
+
+    const itemKey = (item: {
+      kind: "identity" | "event";
+      identity_kind?: "user" | "company";
+      identifier?: string;
+      event_id?: string;
+    }) =>
+      item.kind === "identity"
+        ? `identity:${item.identity_kind}:${item.identifier}`
+        : `event:${item.event_id}`;
+    const requiredItems = new Set([
+      ...plan.tracking_plan.identity.map((identity) =>
+        itemKey({
+          kind: "identity",
+          identity_kind: identity.kind,
+          identifier: identity.identifier,
+        }),
+      ),
+      ...plan.tracking_plan.events.map((event) =>
+        itemKey({ kind: "event", event_id: event.id }),
+      ),
+    ]);
+    const mutationIds = new Set(
+      plan.operations
+        .filter(
+          (operation) =>
+            operation.type === "create_file" || operation.type === "edit_file",
+        )
+        .map((operation) => operation.id),
+    );
+    const coverageOperationIds = plan.instrumentation.coverage.map(
+      (coverage) => coverage.operation_id,
+    );
+    if (
+      new Set(coverageOperationIds).size !== coverageOperationIds.length ||
+      coverageOperationIds.some((id) => !mutationIds.has(id))
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "instrumentation coverage must reference unique file-mutation operations",
+        path: ["instrumentation", "coverage"],
+      });
+    }
+    const covered = new Set(
+      plan.instrumentation.coverage.flatMap((coverage) =>
+        coverage.items.map(itemKey),
+      ),
+    );
+    const deferredKeys = plan.instrumentation.deferred.map((entry) =>
+      itemKey(entry.item),
+    );
+    const deferred = new Set(deferredKeys);
+    if (
+      deferred.size !== deferredKeys.length ||
+      [...covered, ...deferred].some((item) => !requiredItems.has(item)) ||
+      [...covered].some((item) => deferred.has(item)) ||
+      [...requiredItems].some(
+        (item) => !covered.has(item) && !deferred.has(item),
+      )
+    ) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "instrumentation must cover or defer every tracking-plan item exactly by category",
+        path: ["instrumentation"],
       });
     }
   });

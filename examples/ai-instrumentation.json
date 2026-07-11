@@ -1,0 +1,30 @@
+{
+  "schema_version": "1",
+  "tracking_plan_id": "replace-with-tracking-plan-id",
+  "changes": [
+    {
+      "id": "create-tracking-hooks",
+      "type": "create_file",
+      "summary": "Create reviewed Usermaven tracking hooks",
+      "path": "src/generated-usermaven-tracking.ts",
+      "content": "export const reviewedEvents = [\"link_created\"] as const;\n",
+      "covers": [
+        {
+          "kind": "identity",
+          "identity_kind": "user",
+          "identifier": "user_id"
+        },
+        {
+          "kind": "event",
+          "event_id": "link-created"
+        }
+      ]
+    }
+  ],
+  "deferred": [],
+  "warnings": [],
+  "generated_by": {
+    "provider": "mcp-client",
+    "model": "replace-with-host-model"
+  }
+}

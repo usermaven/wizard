@@ -1,11 +1,14 @@
 import { createHash, randomUUID } from "node:crypto";
-import { lstat } from "node:fs/promises";
-import { join } from "node:path";
+import { lstat, readFile, realpath } from "node:fs/promises";
+import { basename, join, resolve, sep } from "node:path";
 
 import {
+  aiInstrumentationProposalSchema,
   setupPlanSchema,
   trackingPlanSchema,
   workspacePublicConfigSchema,
+  type AiInstrumentationChange,
+  type AiInstrumentationProposal,
   type ProjectInspection,
   type SetupOperation,
   type SetupPlan,
@@ -14,7 +17,8 @@ import {
 } from "@usermaven/wizard-schemas";
 
 import { inspectProject } from "./inspector.js";
-const WIZARD_VERSION = "0.7.0";
+
+const WIZARD_VERSION = "0.8.0";
 const SDK_VERSION_RANGE = "^1.5.15";
 
 function boundedId(prefix: string, value: string): string {
@@ -28,6 +32,116 @@ export interface GenerateSetupPlanInput {
   projectRoot: string;
   workspace: WorkspacePublicConfig;
   trackingPlan: TrackingPlan;
+  instrumentationProposal: AiInstrumentationProposal;
+}
+
+function trackingItemKey(item: {
+  kind: "identity" | "event";
+  identity_kind?: "user" | "company";
+  identifier?: string;
+  event_id?: string;
+}): string {
+  return item.kind === "identity"
+    ? `identity:${item.identity_kind}:${item.identifier}`
+    : `event:${item.event_id}`;
+}
+
+function isWithinRoot(root: string, candidate: string): boolean {
+  return candidate === root || candidate.startsWith(`${root}${sep}`);
+}
+
+function rejectSensitivePath(path: string): void {
+  const segments = path.split("/").map((segment) => segment.toLowerCase());
+  const name = basename(path).toLowerCase();
+  if (
+    segments.some((segment) =>
+      [".git", ".usermaven", "node_modules"].includes(segment),
+    ) ||
+    /^\.env(?:\.|$)/u.test(name) ||
+    /^(?:id_rsa|id_ed25519|credentials|secrets?\.json)$/u.test(name) ||
+    [
+      ".npmrc",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+    ].includes(name)
+  ) {
+    throw new Error("AI instrumentation targets a protected local path");
+  }
+}
+
+function validateUnifiedDiffPath(diff: string, expectedPath: string): void {
+  if (
+    /^(?:diff --git|rename (?:from|to)|copy (?:from|to)|GIT binary patch)/mu.test(
+      diff,
+    )
+  ) {
+    throw new Error("AI instrumentation must use a single-file textual diff");
+  }
+  const paths = [...diff.matchAll(/^(?:---|\+\+\+)\s+([^\t\n]+)/gmu)].map(
+    (match) => match[1],
+  );
+  const accepted = new Set([
+    expectedPath,
+    `a/${expectedPath}`,
+    `b/${expectedPath}`,
+  ]);
+  if (
+    paths.length !== 2 ||
+    paths.some((path) => path !== "/dev/null" && !accepted.has(path!))
+  ) {
+    throw new Error("AI instrumentation diff path does not match its target");
+  }
+}
+
+async function validateInstrumentationChange(
+  root: string,
+  change: AiInstrumentationChange,
+): Promise<void> {
+  rejectSensitivePath(change.path);
+  const target = resolve(root, change.path);
+  if (!isWithinRoot(root, target)) {
+    throw new Error("AI instrumentation path escapes the project root");
+  }
+  let current = root;
+  for (const segment of change.path.split("/").slice(0, -1)) {
+    current = join(current, segment);
+    try {
+      const item = await lstat(current);
+      if (item.isSymbolicLink() || !item.isDirectory()) {
+        throw new Error("AI instrumentation path has an unsafe parent");
+      }
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") break;
+      throw error;
+    }
+  }
+
+  if (change.type === "create_file") {
+    try {
+      await lstat(target);
+      throw new Error("AI instrumentation create target already exists");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    }
+    return;
+  }
+
+  const item = await lstat(target);
+  if (item.isSymbolicLink() || !item.isFile() || item.size > 5_000_000) {
+    throw new Error(
+      "AI instrumentation edit target is not a safe regular file",
+    );
+  }
+  const content = await readFile(target);
+  const hash = `sha256:${createHash("sha256").update(content).digest("hex")}`;
+  if (hash !== change.before_hash) {
+    throw new Error("AI instrumentation edit hash is stale");
+  }
+  validateUnifiedDiffPath(change.unified_diff, change.path);
 }
 
 export interface GenerateSetupPlanOptions {
@@ -144,6 +258,70 @@ export async function generateSetupPlan(
       "Tracking plan framework does not match the inspected setup project",
     );
   }
+  const instrumentation = aiInstrumentationProposalSchema.parse(
+    input.instrumentationProposal,
+  );
+  if (instrumentation.tracking_plan_id !== trackingPlan.plan_id) {
+    throw new Error(
+      "AI instrumentation proposal does not match the tracking plan",
+    );
+  }
+  const requiredItems = new Set([
+    ...trackingPlan.identity.map((identity) =>
+      trackingItemKey({
+        kind: "identity",
+        identity_kind: identity.kind,
+        identifier: identity.identifier,
+      }),
+    ),
+    ...trackingPlan.events.map((event) =>
+      trackingItemKey({ kind: "event", event_id: event.id }),
+    ),
+  ]);
+  const coveredItems = new Set<string>();
+  for (const change of instrumentation.changes) {
+    for (const item of change.covers) {
+      const key = trackingItemKey(item);
+      if (!requiredItems.has(key)) {
+        throw new Error(
+          "AI instrumentation covers an unknown tracking-plan item",
+        );
+      }
+      coveredItems.add(key);
+    }
+  }
+  const deferredItems = new Set<string>();
+  for (const deferred of instrumentation.deferred) {
+    const key = trackingItemKey(deferred.item);
+    if (!requiredItems.has(key)) {
+      throw new Error(
+        "AI instrumentation defers an unknown tracking-plan item",
+      );
+    }
+    if (deferredItems.has(key)) {
+      throw new Error("AI instrumentation defers the same item more than once");
+    }
+    if (coveredItems.has(key)) {
+      throw new Error(
+        "AI instrumentation cannot both implement and defer an item",
+      );
+    }
+    deferredItems.add(key);
+  }
+  const missingItems = [...requiredItems].filter(
+    (item) => !coveredItems.has(item) && !deferredItems.has(item),
+  );
+  if (missingItems.length > 0) {
+    throw new Error(
+      "AI instrumentation must implement or explicitly defer every tracking-plan item",
+    );
+  }
+  const root = await realpath(input.projectRoot);
+  await Promise.all(
+    instrumentation.changes.map((change) =>
+      validateInstrumentationChange(root, change),
+    ),
+  );
   const defaults = environmentDefaults(inspection.project.framework);
   const workspace = workspacePublicConfigSchema.parse({
     ...input.workspace,
@@ -209,21 +387,47 @@ export async function generateSetupPlan(
     requires_approval: false,
   });
 
-  for (const identity of trackingPlan.identity) {
-    operations.push({
-      id: `wire-${identity.kind}-identity-${operations.length + 1}`,
-      type: "manual_step",
-      summary: `Wire reviewed ${identity.kind} identity`,
-      instructions: `At the reviewed trigger (${identity.trigger.description}), identify by ${identity.identifier} and include only these approved properties: ${identity.properties.map((item) => item.name).join(", ") || "none"}. Runtime: ${identity.trigger.runtime}.`,
-      requires_approval: false,
-    });
+  const generatedMutationPaths = new Set(
+    operations.flatMap((operation) =>
+      operation.type === "create_file" || operation.type === "edit_file"
+        ? [operation.path]
+        : [],
+    ),
+  );
+  for (const change of instrumentation.changes) {
+    if (generatedMutationPaths.has(change.path)) {
+      throw new Error(
+        "AI instrumentation conflicts with a generated setup operation",
+      );
+    }
+    if (change.type === "edit_file") {
+      operations.push({
+        id: boundedId("instrument-", change.id),
+        type: "edit_file",
+        summary: change.summary,
+        path: change.path,
+        before_hash: change.before_hash,
+        unified_diff: change.unified_diff,
+        requires_approval: true,
+      });
+    } else {
+      operations.push({
+        id: boundedId("instrument-", change.id),
+        type: "create_file",
+        summary: change.summary,
+        path: change.path,
+        content: change.content,
+        requires_approval: true,
+      });
+    }
   }
-  for (const event of trackingPlan.events) {
+  for (const deferred of instrumentation.deferred) {
+    const key = trackingItemKey(deferred.item);
     operations.push({
-      id: boundedId("wire-event-", event.id),
+      id: boundedId("deferred-", key),
       type: "manual_step",
-      summary: `Wire reviewed ${event.event_name} event`,
-      instructions: `Track ${event.event_name} when ${event.trigger.description}. Include only these approved properties: ${event.properties.map((item) => item.name).join(", ") || "none"}. Runtime: ${event.trigger.runtime}; authority: ${event.authority}${event.revenue ? "; authoritative revenue confirmation is required" : ""}.`,
+      summary: `Complete deferred instrumentation for ${key}`,
+      instructions: deferred.reason,
       requires_approval: false,
     });
   }
@@ -244,6 +448,12 @@ export async function generateSetupPlan(
     "The workspace public key value is intentionally absent and must be supplied through the named environment variable.",
     "Route and authentication integration points require human review before changes are applied.",
   ];
+  risks.push(...instrumentation.warnings);
+  if (instrumentation.deferred.length > 0) {
+    risks.push(
+      `${instrumentation.deferred.length} tracking-plan item(s) remain explicitly deferred and require manual implementation.`,
+    );
+  }
   if (inspection.scan.truncated) {
     risks.push(
       "Repository inspection was truncated, so existing setup code may have been missed.",
@@ -275,6 +485,15 @@ export async function generateSetupPlan(
     project: inspection.project,
     operations,
     tracking_plan: trackingPlan,
+    instrumentation: {
+      generated_by: instrumentation.generated_by,
+      coverage: instrumentation.changes.map((change) => ({
+        operation_id: boundedId("instrument-", change.id),
+        items: change.covers,
+      })),
+      deferred: instrumentation.deferred,
+      warnings: instrumentation.warnings,
+    },
     checks: [
       {
         id: "sdk-present",

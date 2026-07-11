@@ -10,6 +10,7 @@ import {
   previewChanges,
 } from "@usermaven/wizard-core";
 import {
+  aiInstrumentationProposalSchema,
   aiTrackingProposalSchema,
   applyResultSchema,
   businessContextSchema,
@@ -22,7 +23,7 @@ import {
 } from "@usermaven/wizard-schemas";
 import { z } from "zod";
 
-const SERVER_VERSION = "0.7.0";
+const SERVER_VERSION = "0.8.0";
 
 const projectPathSchema = z
   .string()
@@ -193,22 +194,24 @@ export async function createWizardMcpServer(
     {
       title: "Generate setup plan",
       description:
-        "Create a typed, approval-ready Usermaven SDK setup plan using public workspace metadata and environment-variable names. Never accepts a workspace key value and never modifies files.",
+        "Create a typed, approval-ready Usermaven SDK and source instrumentation plan. AI changes must cover or explicitly defer every tracking item, and file edits are validated against current hashes and paths. Never accepts a workspace key value and never modifies files.",
       inputSchema: {
         project_path: projectPathSchema.optional(),
         workspace: workspacePublicConfigSchema,
         tracking_plan: trackingPlanSchema,
+        ai_instrumentation: aiInstrumentationProposalSchema,
       },
       outputSchema: setupPlanSchema.shape,
       annotations: readOnlyAnnotations,
     },
-    async ({ project_path, workspace, tracking_plan }) => {
+    async ({ project_path, workspace, tracking_plan, ai_instrumentation }) => {
       try {
         const projectRoot = await resolveProjectPath(root, project_path);
         const result = await generateSetupPlan({
           projectRoot,
           workspace,
           trackingPlan: tracking_plan,
+          instrumentationProposal: ai_instrumentation,
         });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],

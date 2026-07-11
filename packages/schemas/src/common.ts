@@ -6,9 +6,17 @@ export const relativePath = z
   .string()
   .min(1)
   .max(2_000)
-  .refine((value) => !value.startsWith("/") && !value.includes(".."), {
-    message: "path must be repository-relative and cannot traverse parents",
-  });
+  .refine(
+    (value) =>
+      !value.startsWith("/") &&
+      !value.includes("\\") &&
+      !value.split("/").includes("..") &&
+      !/^[a-z]:/iu.test(value),
+    {
+      message:
+        "path must be a forward-slash repository-relative path and cannot traverse parents",
+    },
+  );
 
 export const piiClassificationSchema = z.enum([
   "none",

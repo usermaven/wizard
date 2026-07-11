@@ -10,7 +10,9 @@ usermaven-wizard setup-plan /path/to/project \
   --workspace-name Example \
   --region us \
   --key-fingerprint sha256:example \
-  --tracking-host https://events.example.com > setup-plan.json
+  --tracking-host https://events.example.com \
+  --tracking-plan tracking-plan.json \
+  --ai-instrumentation ai-instrumentation.json > setup-plan.json
 
 usermaven-wizard preview setup-plan.json
 ```

@@ -12,7 +12,8 @@ npx @usermaven/wizard plan . --business-context ./business-context.json \
   --ai-proposal ./ai-proposal.json
 npx @usermaven/wizard setup-plan . --workspace-name Example --region us \
   --key-fingerprint sha256:example --tracking-host https://events.example.com \
-  --tracking-plan ./tracking-plan.json
+  --tracking-plan ./tracking-plan.json \
+  --ai-instrumentation ./ai-instrumentation.json
 npx @usermaven/wizard preview ./setup-plan.json
 npx @usermaven/wizard approve ./setup-plan.json --operations install-sdk \
   --root /path/to/project --output ./approval.json

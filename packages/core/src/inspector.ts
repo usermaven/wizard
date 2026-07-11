@@ -8,7 +8,7 @@ import {
   type ProjectInspection,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.7.0";
+const WIZARD_VERSION = "0.8.0";
 const DEFAULT_MAX_FILES = 5_000;
 const DEFAULT_MAX_FILE_BYTES = 1_000_000;
 const DEFAULT_MAX_TOTAL_BYTES = 10_000_000;

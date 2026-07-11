@@ -79,8 +79,25 @@ const trackingPlan = trackingPlanSchema.parse({
     },
   },
   created_at: "2026-07-11T13:00:00Z",
-  wizard_version: "0.7.0",
+  wizard_version: "0.8.0",
 });
+const instrumentationProposal = {
+  schema_version: "1" as const,
+  tracking_plan_id: trackingPlan.plan_id,
+  changes: [
+    {
+      id: "generate-tracking-hooks",
+      type: "create_file" as const,
+      summary: "Create reviewed tracking hooks",
+      path: "src/generated-tracking.ts",
+      content: 'export const events = ["link_created"] as const;\n',
+      covers: [{ kind: "event" as const, event_id: "link-created" }],
+    },
+  ],
+  deferred: [],
+  warnings: [],
+  generated_by: { provider: "test", model: "test-coding-model" },
+};
 
 afterEach(async () => {
   await Promise.all(
@@ -101,7 +118,12 @@ async function project(): Promise<string> {
 
 async function generatedPlan(root: string): Promise<SetupPlan> {
   return generateSetupPlan(
-    { projectRoot: root, workspace, trackingPlan },
+    {
+      projectRoot: root,
+      workspace,
+      trackingPlan,
+      instrumentationProposal,
+    },
     {
       now: fixedNow,
       idFactory: () => "apply-plan-1234",
@@ -257,6 +279,7 @@ describe("applyChanges", () => {
     const beforeHash = `sha256:${createHash("sha256").update(original).digest("hex")}`;
     const plan = setupPlanSchema.parse({
       ...base,
+      instrumentation: undefined,
       operations: [
         {
           id: "edit-existing",
@@ -290,6 +313,7 @@ describe("applyChanges", () => {
     const base = await generatedPlan(root);
     const plan = setupPlanSchema.parse({
       ...base,
+      instrumentation: undefined,
       operations: [
         {
           id: "edit-existing",
@@ -341,6 +365,7 @@ describe("applyChanges", () => {
     const base = await generatedPlan(root);
     const plan = setupPlanSchema.parse({
       ...base,
+      instrumentation: undefined,
       operations: [
         {
           id: "unsafe-create",
@@ -360,6 +385,33 @@ describe("applyChanges", () => {
 
     expect(result.outcome).toBe("rolled_back");
     await expect(access(join(external, "out.ts"))).rejects.toThrow();
+  });
+
+  it("rejects approved mutations of protected local files", async () => {
+    const root = await project();
+    const base = await generatedPlan(root);
+    const plan = setupPlanSchema.parse({
+      ...base,
+      instrumentation: undefined,
+      operations: [
+        {
+          id: "unsafe-secret-create",
+          type: "create_file",
+          summary: "Unsafe secret create",
+          path: ".env.local",
+          content: "must not be written",
+          requires_approval: true,
+        },
+      ],
+    });
+    const approved = await approval(root, plan, ["unsafe-secret-create"]);
+    const result = await applyChanges(
+      { projectRoot: root, plan, approval: approved },
+      { now: fixedNow },
+    );
+
+    expect(result.outcome).toBe("rolled_back");
+    await expect(access(join(root, ".env.local"))).rejects.toThrow();
   });
 
   it("rejects expired approval before creating apply state", async () => {

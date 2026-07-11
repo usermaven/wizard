@@ -11,7 +11,7 @@ import {
   unlink,
   writeFile,
 } from "node:fs/promises";
-import { dirname, join, resolve, sep } from "node:path";
+import { basename, dirname, join, resolve, sep } from "node:path";
 import { spawn } from "node:child_process";
 
 import {
@@ -62,6 +62,29 @@ function isErrno(error: unknown, code: string): boolean {
 
 function isWithinRoot(root: string, candidate: string): boolean {
   return candidate === root || candidate.startsWith(`${root}${sep}`);
+}
+
+function rejectProtectedMutationPath(path: string): void {
+  const segments = path.split("/").map((segment) => segment.toLowerCase());
+  const name = basename(path).toLowerCase();
+  if (
+    segments.some((segment) =>
+      [".git", ".usermaven", "node_modules"].includes(segment),
+    ) ||
+    /^\.env(?:\.|$)/u.test(name) ||
+    /^(?:id_rsa|id_ed25519|credentials|secrets?\.json)$/u.test(name) ||
+    [
+      ".npmrc",
+      "package.json",
+      "package-lock.json",
+      "pnpm-lock.yaml",
+      "yarn.lock",
+      "bun.lock",
+      "bun.lockb",
+    ].includes(name)
+  ) {
+    throw new Error("Mutation targets a protected local path");
+  }
 }
 
 async function ensureSafeParentDirectories(
@@ -351,6 +374,7 @@ export async function applyChanges(
     const snapshotPaths = new Set<string>();
     for (const operation of operations) {
       if (operation.type === "create_file" || operation.type === "edit_file") {
+        rejectProtectedMutationPath(operation.path);
         snapshotPaths.add(
           await ensureSafeParentDirectories(
             root,

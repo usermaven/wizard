@@ -67,14 +67,17 @@ usermaven-wizard setup-plan . \
   --region us \
   --key-fingerprint sha256:example \
   --tracking-host https://events.example.com \
-  --tracking-plan ./tracking-plan.json
+  --tracking-plan ./tracking-plan.json \
+  --ai-instrumentation ./ai-instrumentation.json
 
 usermaven-wizard preview ./setup-plan.json
 ```
 
 Setup generation references the public key through a framework-specific
-environment-variable name and never accepts its value. Previewing renders typed
-operations without installing packages, writing files, or running commands.
+environment-variable name and never accepts its value. Source-aware AI edits are
+bound to exact tracking items and become approval-required file operations.
+Previewing renders them without installing packages, writing files, or running
+commands.
 
 ## Approve and apply exact operations
 

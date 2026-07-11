@@ -19,6 +19,7 @@ import {
   projectInspectionSchema,
   setupPlanSchema,
   trackingPlanSchema,
+  type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 import { describe, expect, it } from "vitest";
 
@@ -84,6 +85,26 @@ async function generatedTrackingPlan(client: Client, projectPath?: string) {
   });
   expect(result.isError).not.toBe(true);
   return trackingPlanSchema.parse(result.structuredContent);
+}
+
+function generatedInstrumentation(plan: TrackingPlan) {
+  return {
+    schema_version: "1",
+    tracking_plan_id: plan.plan_id,
+    changes: [
+      {
+        id: "generate-tracking-hooks",
+        type: "create_file",
+        summary: "Create reviewed tracking hooks",
+        path: "src/generated-tracking.ts",
+        content: 'export const events = ["link_created"] as const;\n',
+        covers: [{ kind: "event", event_id: "link-created" }],
+      },
+    ],
+    deferred: [],
+    warnings: [],
+    generated_by: { provider: "mcp-client", model: "test-coding-model" },
+  };
 }
 
 describe("local MCP server", () => {
@@ -192,6 +213,7 @@ describe("local MCP server", () => {
             tracking_host: "https://events.example.com",
           },
           tracking_plan: trackingPlan,
+          ai_instrumentation: generatedInstrumentation(trackingPlan),
         },
       });
       const plan = setupPlanSchema.parse(generated.structuredContent);
@@ -215,7 +237,7 @@ describe("local MCP server", () => {
           }),
         ]),
       );
-      expect(preview.summary.mutations).toBe(2);
+      expect(preview.summary.mutations).toBe(3);
       expect(JSON.stringify({ plan, preview })).not.toContain(
         "actual-workspace-key",
       );
@@ -241,6 +263,7 @@ describe("local MCP server", () => {
             key: "actual-workspace-key",
           },
           tracking_plan: trackingPlan,
+          ai_instrumentation: generatedInstrumentation(trackingPlan),
         },
       });
 
@@ -272,13 +295,17 @@ describe("local MCP server", () => {
             tracking_host: "https://events.example.com",
           },
           tracking_plan: trackingPlan,
+          ai_instrumentation: generatedInstrumentation(trackingPlan),
         },
       });
       const plan = setupPlanSchema.parse(generated.structuredContent);
       const approval = await createChangeApproval({
         plan,
         projectRoot: root,
-        operationIds: ["create-usermaven-client"],
+        operationIds: [
+          "create-usermaven-client",
+          "instrument-generate-tracking-hooks",
+        ],
         confirmedByInteractiveUser: true,
       });
       const applied = await client.callTool({
@@ -292,6 +319,9 @@ describe("local MCP server", () => {
       expect(
         await readFile(join(root, "src", "usermaven.ts"), "utf8"),
       ).toContain("usermavenClient");
+      expect(
+        await readFile(join(root, "src", "generated-tracking.ts"), "utf8"),
+      ).toContain("link_created");
     } finally {
       await client.close();
       await server.close();

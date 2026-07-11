@@ -99,6 +99,27 @@ try {
         tracking_host: "https://events.example.com",
       },
       tracking_plan: tracking.structuredContent,
+      ai_instrumentation: {
+        schema_version: "1",
+        tracking_plan_id: tracking.structuredContent.plan_id,
+        changes: [
+          {
+            id: "generate-tracking-hooks",
+            type: "create_file",
+            summary: "Create reviewed tracking hooks",
+            path: "src/generated-tracking.ts",
+            content:
+              'export const events = ["primary_action_completed"] as const;\n',
+            covers: [{ kind: "event", event_id: "primary-action" }],
+          },
+        ],
+        deferred: [],
+        warnings: [],
+        generated_by: {
+          provider: "mcp-client",
+          model: "smoke-coding-model",
+        },
+      },
     },
   });
   if (

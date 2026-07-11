@@ -1,11 +1,11 @@
 # Local MCP development playbook
 
 The Usermaven Wizard MCP server runs as a local child process over stdio. It has
-no listening port and makes no remote Usermaven calls. Version `0.7.0` exposes:
+no listening port and makes no remote Usermaven calls. Version `0.8.0` exposes:
 
 - `inspect_project`: normalized framework and analytics evidence
 - `propose_tracking_plan`: validate and stamp an AI-generated tracking plan
-- `generate_setup_plan`: typed SDK installation and integration operations
+- `generate_setup_plan`: typed SDK and source-aware AI instrumentation operations
 - `preview_changes`: rendered operations with no execution
 - `apply_changes`: exact operations authorized by a separate approval artifact
 
@@ -51,7 +51,7 @@ should discover exactly `inspect_project`, `propose_tracking_plan`,
 After the npm package is published, the equivalent command will be:
 
 ```sh
-npx -y -p @usermaven/wizard@0.7.0 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.8.0 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 
@@ -84,6 +84,10 @@ escape rejection.
   normalized inspection, and any source access separately authorized in the
   agent host. The wizard does not invoke a model or upload repository source.
   Every generated item remains proposed and review-required.
+- The same client model generates `ai_instrumentation` after inspecting source.
+  Every tracking item must be implemented or deferred. The wizard validates
+  paths, file hashes, diff targets, coverage, and conflicts before emitting
+  approval-required operations.
 - `apply_changes` requires an unexpired approval created by the interactive CLI;
   the MCP server cannot mint or broaden approval.
 - Applying may install packages, edit files, create files, and run an allowlisted

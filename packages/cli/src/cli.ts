@@ -15,6 +15,7 @@ import {
 } from "@usermaven/wizard-core";
 import {
   aiTrackingProposalSchema,
+  aiInstrumentationProposalSchema,
   businessContextSchema,
   changeApprovalSchema,
   setupPlanSchema,
@@ -30,7 +31,7 @@ Usage:
     --ai-proposal <proposal.json> [--compact]
   usermaven-wizard setup-plan [path] --workspace-name <name> --region <region>
     --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>
-    --tracking-plan <tracking-plan.json>
+    --tracking-plan <tracking-plan.json> --ai-instrumentation <changes.json>
     [--key-env-var <name>] [--tracking-host-env-var <name>] [--compact]
   usermaven-wizard preview <setup-plan.json> [--compact]
   usermaven-wizard approve <setup-plan.json> --operations <id,id> [--root <path>]
@@ -99,6 +100,7 @@ async function main(): Promise<void> {
           "--key-env-var",
           "--tracking-host-env-var",
           "--tracking-plan",
+          "--ai-instrumentation",
         ]
       : command === "plan"
         ? ["--business-context", "--ai-proposal"]
@@ -159,6 +161,12 @@ async function main(): Promise<void> {
       trackingPlan: setupPlanSchema.shape.tracking_plan.parse(
         await readJson(
           requiredOption(parsed.options, "--tracking-plan"),
+          5_000_000,
+        ),
+      ),
+      instrumentationProposal: aiInstrumentationProposalSchema.parse(
+        await readJson(
+          requiredOption(parsed.options, "--ai-instrumentation"),
           5_000_000,
         ),
       ),

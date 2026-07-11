@@ -40,6 +40,14 @@ variable names. It never contains the public-key value. Change previews render
 typed operation content and explicitly mark previews containing repository source
 context; rendering does not execute an operation.
 
+An AI instrumentation proposal binds itself to one tracking-plan ID and records
+model provenance. Each edit carries its exact preimage hash and single-file
+unified diff; each create carries bounded content. Changes declare the identity
+and event items they implement. Every tracking item must be covered or listed as
+deferred with a reason, and an item cannot be both. The setup plan retains the
+mapping from each generated operation ID to its covered tracking items for
+preview, approval, and audit.
+
 ## Approval and application result
 
 A change approval binds one setup-plan digest, canonical repository-root
