@@ -9,6 +9,7 @@ export const commandManifestItemSchema = z
     mutates_repository: z.boolean(),
     requires_approval: z.boolean(),
     agent_safe: z.boolean(),
+    availability: z.enum(["implemented", "planned"]).optional(),
   })
   .strict();
 

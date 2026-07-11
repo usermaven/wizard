@@ -40,10 +40,11 @@ installation sessions.
 
 ## Local MCP surface
 
-The local MCP server will expose the tools declared by
-`usermaven-wizard manifest`. Read-only calls can be invoked by an agent without
-additional approval. `apply_changes` is agent-safe only in the sense that it is
-structured and bounded; it still requires explicit human approval.
+The local stdio MCP server currently exposes `inspect_project` and
+`propose_tracking_plan`. Both are read-only and confined to a canonical root
+chosen when the process starts. The manifest marks future tools as planned.
+`apply_changes` will be agent-safe only in the sense that it is structured and
+bounded; it will still require explicit human approval.
 
 ## Remote installation sessions
 

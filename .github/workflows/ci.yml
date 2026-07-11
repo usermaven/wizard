@@ -22,6 +22,7 @@ jobs:
           cache: npm
       - run: npm ci
       - run: npm run check
+      - run: npm run test:mcp-stdio
       - run: npm pack --workspace @usermaven/wizard --dry-run
       - run: npm pack --workspace @usermaven/wizard-core --dry-run
       - run: npm pack --workspace @usermaven/wizard-schemas --dry-run

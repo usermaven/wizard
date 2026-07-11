@@ -1,6 +1,6 @@
 {
   "name": "@usermaven/wizard-core",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "description": "Local inspection and planning engine for Usermaven Wizard.",
   "license": "MIT",
   "repository": {
@@ -27,7 +27,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@usermaven/wizard-schemas": "0.3.0"
+    "@usermaven/wizard-schemas": "0.4.0"
   },
   "publishConfig": {
     "access": "public",

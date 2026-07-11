@@ -7,8 +7,8 @@ setup works. It is designed for both people and coding agents.
 > [!IMPORTANT]
 > This repository is under active development. Versioned contracts,
 > machine-readable manifests, bounded project inspection, and deterministic
-> baseline tracking plans are implemented. Repository mutation, local MCP, and
-> end-to-end verification are not implemented yet.
+> baseline tracking plans, and a read-only local MCP server are implemented.
+> Repository mutation and end-to-end verification are not implemented yet.
 
 ## Design promises
 
@@ -27,8 +27,8 @@ setup works. It is designed for both people and coding agents.
   plans, project inspections, verification results, agent NDJSON events, and the
   command manifest.
 - `@usermaven/wizard-core`: reusable local inspection and planning engine.
-- `@usermaven/wizard`: the CLI and future local MCP server. `inspect`, `plan`,
-  and `manifest` are currently executable.
+- `@usermaven/wizard`: the CLI and local MCP server. `inspect`, `plan`,
+  `manifest`, and the read-only MCP binary are currently executable.
 
 ## Inspect a project
 
@@ -50,6 +50,16 @@ npx @usermaven/wizard plan .
 Baseline mode proposes page views, stable user identity, and shared deployment
 properties. Every item requires review. It deliberately does not invent custom
 business or revenue events from source-code keywords.
+
+## Run the local MCP server
+
+```sh
+node packages/cli/dist/mcp.js --root /absolute/path/to/project
+```
+
+It exposes `inspect_project` and `propose_tracking_plan` over stdio. See the
+[local MCP development playbook](docs/local-mcp.md) for client configuration,
+security boundaries, and troubleshooting.
 
 ## Development
 

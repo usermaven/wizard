@@ -51,4 +51,5 @@ payloads.
 
 `usermaven-wizard manifest` describes commands and planned local MCP tools,
 including whether they mutate the repository and require approval. Clients
-should read this rather than infer safety from tool names.
+should read this rather than infer safety from tool names. The optional
+`availability` field distinguishes implemented surfaces from planned contracts.

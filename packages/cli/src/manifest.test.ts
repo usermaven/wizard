@@ -17,4 +17,12 @@ describe("CLI manifest", () => {
         .every((surface) => surface.requires_approval),
     ).toBe(true);
   });
+
+  it("marks exactly the currently executable local MCP tools implemented", () => {
+    expect(
+      manifest.local_mcp_tools
+        .filter((tool) => tool.availability === "implemented")
+        .map((tool) => tool.name),
+    ).toEqual(["inspect_project", "propose_tracking_plan"]);
+  });
 });

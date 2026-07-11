@@ -35,6 +35,6 @@ network boundary. Output shown for human approval crosses a decision boundary.
 
 The inspector is a privacy-reducing application control, not an operating-system
 sandbox. A process with broader filesystem permission still relies on the
-wizard's traversal rules. The repository does not yet mutate files, capture
-traffic, authenticate to Usermaven, or run a local MCP server. Those features
-must satisfy this threat model before release.
+wizard's traversal rules. The local MCP surface is read-only and stdio-only. The
+repository does not yet mutate files, capture traffic, or authenticate to
+Usermaven. Those features must satisfy this threat model before release.
