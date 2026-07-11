@@ -10,7 +10,7 @@ setup works. It is designed for both people and coding agents.
 > plans, approval-ready setup plans, change previews,
 > approval-bound repository application, and a local MCP server are implemented.
 > Marker-bound static, runtime, transport, and workspace-receipt verification is
-> also implemented.
+> also implemented, along with digest-bound checkpoint/resume recovery.
 
 ## Design promises
 
@@ -114,6 +114,19 @@ short-lived marker-bound evidence from browser/E2E observation, collector
 responses, and the selected workspace. See the [verification
 playbook](docs/verification-playbook.md).
 
+## Checkpoint and resume
+
+```sh
+usermaven-wizard checkpoint . --step inspection_completed
+usermaven-wizard resume . --workflow-id workflow_example-1234
+```
+
+Workflow state contains only repository binding, artifact paths/digests, and
+setup progress. Resume validates stale files, expired approvals/sessions, and
+interrupted apply state before returning one next action; it never runs an agent
+or replays an approval. See the [recovery
+playbook](docs/workflow-recovery.md).
+
 ## Run the local MCP server
 
 ```sh
@@ -121,7 +134,7 @@ node packages/cli/dist/mcp.js --root /absolute/path/to/project
 ```
 
 It exposes inspection, tracking-plan, setup-plan, preview, approval-bound
-application, and four-layer verification tools over stdio. See the
+application, checkpoint/resume, and four-layer verification tools over stdio. See the
 [local MCP development playbook](docs/local-mcp.md) for client configuration,
 security boundaries, and troubleshooting.
 

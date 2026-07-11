@@ -13,6 +13,8 @@ import {
   generateSetupPlan,
   inspectProject,
   previewChanges,
+  resumeWorkflow,
+  saveWorkflowCheckpoint,
   verifySetup,
 } from "@usermaven/wizard-core";
 import {
@@ -23,6 +25,7 @@ import {
   setupPlanSchema,
   verificationEvidenceSchema,
   verificationSessionSchema,
+  workflowStepSchema,
 } from "@usermaven/wizard-schemas";
 
 import { manifest } from "./manifest.js";
@@ -46,6 +49,11 @@ Usage:
     --environment <name> [--ttl-minutes <1-60>] [--compact]
   usermaven-wizard verify <setup-plan.json> --session <session.json>
     --evidence <evidence.json> [--root <path>] [--compact]
+  usermaven-wizard checkpoint [path] --step <workflow-step>
+    [--workflow-id <id>] [--tracking-plan <path>] [--setup-plan <path>]
+    [--approval <path>] [--apply-result <path>] [--session <path>]
+    [--verification-result <path>] [--compact]
+  usermaven-wizard resume [path] --workflow-id <id> [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
@@ -120,7 +128,20 @@ async function main(): Promise<void> {
               ? ["--environment", "--ttl-minutes"]
               : command === "verify"
                 ? ["--root", "--session", "--evidence"]
-                : [];
+                : command === "checkpoint"
+                  ? [
+                      "--step",
+                      "--workflow-id",
+                      "--tracking-plan",
+                      "--setup-plan",
+                      "--approval",
+                      "--apply-result",
+                      "--session",
+                      "--verification-result",
+                    ]
+                  : command === "resume"
+                    ? ["--workflow-id"]
+                    : [];
   const parsed = parseArguments(flags, allowedOptions);
   const spacing = parsed.compact ? undefined : 2;
 
@@ -325,6 +346,44 @@ async function main(): Promise<void> {
     });
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     if (result.outcome === "fail") process.exitCode = 1;
+    return;
+  }
+  if (command === "checkpoint") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Checkpoint accepts at most one project path");
+    const artifactOptionNames = {
+      tracking_plan: "--tracking-plan",
+      setup_plan: "--setup-plan",
+      approval: "--approval",
+      apply_result: "--apply-result",
+      verification_session: "--session",
+      verification_result: "--verification-result",
+    } as const;
+    const artifactPaths = Object.fromEntries(
+      Object.entries(artifactOptionNames)
+        .map(([kind, option]) => [kind, parsed.options.get(option)])
+        .filter((entry): entry is [string, string] => entry[1] !== undefined),
+    );
+    const workflowId = parsed.options.get("--workflow-id");
+    const result = await saveWorkflowCheckpoint({
+      projectRoot: parsed.positionals[0] ?? process.cwd(),
+      completedStep: workflowStepSchema.parse(
+        requiredOption(parsed.options, "--step"),
+      ),
+      ...(workflowId ? { workflowId } : {}),
+      artifactPaths,
+    });
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "resume") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Resume accepts at most one project path");
+    const result = await resumeWorkflow(
+      parsed.positionals[0] ?? process.cwd(),
+      requiredOption(parsed.options, "--workflow-id"),
+    );
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
   if (command === undefined || command === "--help" || command === "-h") {

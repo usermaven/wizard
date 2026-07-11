@@ -18,7 +18,7 @@ import {
 
 import { inspectProject } from "./inspector.js";
 
-const WIZARD_VERSION = "0.9.0";
+const WIZARD_VERSION = "0.10.0";
 const SDK_VERSION_RANGE = "^1.5.15";
 
 function boundedId(prefix: string, value: string): string {

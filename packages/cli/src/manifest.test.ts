@@ -25,6 +25,8 @@ describe("CLI manifest", () => {
         .map((tool) => tool.name),
     ).toEqual([
       "inspect_project",
+      "checkpoint_workflow",
+      "resume_workflow",
       "propose_tracking_plan",
       "generate_setup_plan",
       "preview_changes",

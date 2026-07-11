@@ -23,10 +23,12 @@ npx @usermaven/wizard verification-session ./setup-plan.json \
   --environment staging
 npx @usermaven/wizard verify ./setup-plan.json --session ./session.json \
   --evidence ./evidence.json --root /path/to/project
+npx @usermaven/wizard checkpoint . --step inspection_completed
+npx @usermaven/wizard resume . --workflow-id workflow_example-1234
 npx @usermaven/wizard manifest
 npx -p @usermaven/wizard usermaven-wizard-mcp --root /path/to/project
 ```
 
-The MCP server exposes the same application and four-layer verification
-primitives but cannot create an application approval. Additional tools remain planned. See the
+The MCP server exposes the same application, checkpoint/resume, and four-layer
+verification primitives but cannot create an application approval. See the
 [project repository](https://github.com/usermaven/wizard) for the security model.

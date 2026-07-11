@@ -9,21 +9,24 @@ const transport = new StdioClientTransport({
 });
 const client = new Client({ name: "wizard-stdio-smoke", version: "1.0.0" });
 let childStderr = "";
+let stage = "connect";
 transport.stderr?.on("data", (chunk) => {
   childStderr += chunk.toString();
 });
 
 try {
   await client.connect(transport);
+  stage = "list_tools";
   const listed = await client.listTools();
   const names = listed.tools.map((tool) => tool.name);
   if (
     names.join(",") !==
-    "inspect_project,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes,prepare_verification,verify_setup"
+    "inspect_project,checkpoint_workflow,resume_workflow,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes,prepare_verification,verify_setup"
   ) {
     throw new Error(`Unexpected MCP tools: ${names.join(", ")}`);
   }
 
+  stage = "inspect_project";
   const result = await client.callTool({
     name: "inspect_project",
     arguments: { project_path: "react-vite" },
@@ -35,6 +38,7 @@ try {
     throw new Error("MCP inspection smoke call failed");
   }
 
+  stage = "propose_tracking_plan";
   const tracking = await client.callTool({
     name: "propose_tracking_plan",
     arguments: {
@@ -88,6 +92,7 @@ try {
     throw new Error("MCP AI tracking-plan smoke call failed");
   }
 
+  stage = "generate_setup_plan";
   const generated = await client.callTool({
     name: "generate_setup_plan",
     arguments: {
@@ -129,6 +134,7 @@ try {
   ) {
     throw new Error("MCP setup-plan smoke call failed");
   }
+  stage = "preview_changes";
   const previewed = await client.callTool({
     name: "preview_changes",
     arguments: { setup_plan: generated.structuredContent },
@@ -140,6 +146,7 @@ try {
   ) {
     throw new Error("MCP preview smoke call failed");
   }
+  stage = "prepare_verification";
   const prepared = await client.callTool({
     name: "prepare_verification",
     arguments: {
@@ -150,6 +157,7 @@ try {
   if (prepared.isError || !prepared.structuredContent?.session_id) {
     throw new Error("MCP verification-session smoke call failed");
   }
+  stage = "verify_setup";
   const verified = await client.callTool({
     name: "verify_setup",
     arguments: {
@@ -164,6 +172,8 @@ try {
   }
   process.stdout.write("stdio MCP smoke passed\n");
 } catch (error) {
+  await new Promise((resolve) => setTimeout(resolve, 100));
+  process.stderr.write(`MCP smoke failed during ${stage}\n`);
   if (childStderr) {
     process.stderr.write(`MCP child stderr:\n${childStderr}\n`);
   }

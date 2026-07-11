@@ -2,7 +2,7 @@
 
 Reviewed against public product material on 2026-07-11.
 
-| Capability                               | Usermaven Wizard 0.9                                          | Amplitude Wizard                                                                 | PostHog Wizard / MCP                                                           |
+| Capability                               | Usermaven Wizard 0.10                                         | Amplitude Wizard                                                                 | PostHog Wizard / MCP                                                           |
 | ---------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Detect frameworks and existing analytics | Implemented, bounded and normalized                           | Implemented across a broad framework matrix                                      | Implemented across 16+ frameworks                                              |
 | Propose a tracking plan                  | Agent-generated custom events/properties with strict review   | AI proposes events from the codebase                                             | AI wizard and program-specific audits                                          |
@@ -11,7 +11,7 @@ Reviewed against public product material on 2026-07-11.
 | MCP role                                 | Local planning plus approval-bound apply                      | Read-only local setup MCP paired with apply CLI; separate product MCP            | Hosted product MCP plus separate AI setup wizard                               |
 | Source privacy default                   | Model/source permissions stay in the agent host               | AI analyzes the local codebase; public docs do not promise a local-only boundary | Wizard sends selected source to Anthropic through PostHog's gateway by default |
 | Verify live events                       | Marker-bound static/runtime/transport/workspace checks        | Polls for event arrival                                                          | Setup wizard includes verification-oriented flow                               |
-| Resume/checkpoints                       | Not implemented                                               | Implemented                                                                      | No equivalent public contract identified                                       |
+| Resume/checkpoints                       | Digest-bound artifacts, expiry and interrupted-apply recovery | Implemented                                                                      | No equivalent public contract identified                                       |
 | Starter dashboards                       | Not implemented                                               | Creates charts and a dashboard                                                   | Creates a starter dashboard                                                    |
 
 ## What the comparison means
@@ -30,10 +30,10 @@ flow sends selected source files to Anthropic through PostHog's gateway.
 
 ## Usermaven gaps to close next
 
-1. Checkpoint/resume and recovery UX around interrupted setup.
-2. OAuth and workspace selection inside the published developer flow.
-3. Starter events, charts, and dashboards after successful verification.
-4. More framework adapters and fixture coverage.
+1. OAuth and workspace selection inside the published developer flow.
+2. Starter events, charts, and dashboards after successful verification.
+3. More framework adapters and fixture coverage.
+4. Diagnostic `doctor` checks for local configuration and connectivity.
 
 ## Official references
 

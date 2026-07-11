@@ -30,10 +30,20 @@ const mutating = (
   availability,
 });
 
+const localState = (name: string, description: string) => ({
+  name,
+  description,
+  mutates_repository: false,
+  mutates_local_state: true,
+  requires_approval: false,
+  agent_safe: true,
+  availability: "implemented" as const,
+});
+
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.9.0",
+  version: "0.10.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -77,6 +87,15 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Run static, runtime, transport, and receipt checks without raw payloads.",
       "implemented",
     ),
+    localState(
+      "checkpoint",
+      "Persist digest-bound setup workflow progress in private local state.",
+    ),
+    readOnly(
+      "resume",
+      "Validate workflow state and return one deterministic next action.",
+      "implemented",
+    ),
     readOnly("doctor", "Diagnose configuration and connectivity problems."),
     readOnly(
       "manifest",
@@ -88,6 +107,15 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     readOnly(
       "inspect_project",
       "Inspect the local project and return normalized facts.",
+      "implemented",
+    ),
+    localState(
+      "checkpoint_workflow",
+      "Persist bounded workflow metadata and artifact digests.",
+    ),
+    readOnly(
+      "resume_workflow",
+      "Validate checkpoint recovery state and return the next action.",
       "implemented",
     ),
     readOnly(

@@ -88,3 +88,5 @@ bodies, headers, cookies, identities, or raw payloads.
 including whether they mutate the repository and require approval. Clients
 should read this rather than infer safety from tool names. The optional
 `availability` field distinguishes implemented surfaces from planned contracts.
+`mutates_local_state` separately identifies internal Wizard state writes such as
+workflow checkpoints; these do not authorize application source changes.

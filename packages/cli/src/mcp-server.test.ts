@@ -21,6 +21,8 @@ import {
   trackingPlanSchema,
   verificationResultSchema,
   verificationSessionSchema,
+  wizardCheckpointSchema,
+  workflowResumeResultSchema,
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 import { describe, expect, it } from "vitest";
@@ -110,13 +112,15 @@ function generatedInstrumentation(plan: TrackingPlan) {
 }
 
 describe("local MCP server", () => {
-  it("advertises six read-only tools and one destructive apply tool", async () => {
+  it("advertises recovery tools and one destructive apply tool", async () => {
     const { client, server } = await connectedServer(fixtures);
     try {
       const { tools } = await client.listTools();
 
       expect(tools.map((tool) => tool.name)).toEqual([
         "inspect_project",
+        "checkpoint_workflow",
+        "resume_workflow",
         "propose_tracking_plan",
         "generate_setup_plan",
         "preview_changes",
@@ -125,7 +129,8 @@ describe("local MCP server", () => {
         "verify_setup",
       ]);
       const readOnlyTools = tools.filter(
-        (tool) => tool.name !== "apply_changes",
+        (tool) =>
+          tool.name !== "apply_changes" && tool.name !== "checkpoint_workflow",
       );
       expect(
         readOnlyTools.every(
@@ -143,9 +148,48 @@ describe("local MCP server", () => {
         idempotentHint: false,
         openWorldHint: false,
       });
+      expect(
+        tools.find((tool) => tool.name === "checkpoint_workflow")?.annotations,
+      ).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: false,
+        idempotentHint: false,
+        openWorldHint: false,
+      });
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it("checkpoints bounded workflow state and resumes with one action", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-mcp-workflow-"));
+    const { client, server } = await connectedServer(root);
+    try {
+      const saved = await client.callTool({
+        name: "checkpoint_workflow",
+        arguments: { completed_step: "inspection_completed" },
+      });
+      const checkpoint = wizardCheckpointSchema.parse(saved.structuredContent);
+      const resumed = await client.callTool({
+        name: "resume_workflow",
+        arguments: { workflow_id: checkpoint.workflow_id },
+      });
+      const result = workflowResumeResultSchema.parse(
+        resumed.structuredContent,
+      );
+
+      expect(saved.isError).not.toBe(true);
+      expect(resumed.isError).not.toBe(true);
+      expect(result).toMatchObject({
+        checkpoint_status: "ready",
+        next_action: "generate_tracking_plan",
+      });
+      expect(JSON.stringify({ checkpoint, result })).not.toContain(root);
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(root, { recursive: true });
     }
   });
 

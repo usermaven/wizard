@@ -2,6 +2,9 @@
 
 The local, reusable engine behind Usermaven Wizard.
 
+It also owns approval-safe apply state and Wizard-scoped checkpoint/resume
+recovery. It does not implement model execution or a generic agent runtime.
+
 The first capability is bounded, read-only project inspection:
 
 ```ts

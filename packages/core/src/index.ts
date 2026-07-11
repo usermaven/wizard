@@ -33,3 +33,9 @@ export {
   type VerifySetupInput,
   type VerifySetupOptions,
 } from "./verify.js";
+export {
+  resumeWorkflow,
+  saveWorkflowCheckpoint,
+  type SaveWorkflowCheckpointInput,
+  type WorkflowOptions,
+} from "./workflow.js";

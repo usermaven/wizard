@@ -7,6 +7,7 @@ export const commandManifestItemSchema = z
     name: z.string().min(1).max(128),
     description: z.string().min(1).max(1_000),
     mutates_repository: z.boolean(),
+    mutates_local_state: z.boolean().default(false),
     requires_approval: z.boolean(),
     agent_safe: z.boolean(),
     availability: z.enum(["implemented", "planned"]).optional(),

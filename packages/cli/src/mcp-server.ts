@@ -9,6 +9,8 @@ import {
   generateSetupPlan,
   inspectProject,
   previewChanges,
+  resumeWorkflow,
+  saveWorkflowCheckpoint,
   verifySetup,
 } from "@usermaven/wizard-core";
 import {
@@ -19,16 +21,20 @@ import {
   changeApprovalSchema,
   changePreviewSchema,
   projectInspectionSchema,
+  relativePath,
   setupPlanSchema,
   trackingPlanSchema,
   verificationEvidenceSchema,
   verificationResultSchema,
   verificationSessionSchema,
   workspacePublicConfigSchema,
+  wizardCheckpointSchema,
+  workflowResumeResultSchema,
+  workflowStepSchema,
 } from "@usermaven/wizard-schemas";
 import { z } from "zod";
 
-const SERVER_VERSION = "0.9.0";
+const SERVER_VERSION = "0.10.0";
 
 const projectPathSchema = z
   .string()
@@ -56,6 +62,13 @@ const readOnlyAnnotations = {
 const destructiveAnnotations = {
   readOnlyHint: false,
   destructiveHint: true,
+  idempotentHint: false,
+  openWorldHint: false,
+} as const;
+
+const localStateAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: false,
   idempotentHint: false,
   openWorldHint: false,
 } as const;
@@ -151,6 +164,84 @@ export async function createWizardMcpServer(
       try {
         const projectRoot = await resolveProjectPath(root, project_path);
         const result = await inspectProject(projectRoot);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "checkpoint_workflow",
+    {
+      title: "Checkpoint setup workflow",
+      description:
+        "Persist bounded setup progress under .usermaven/workflows. Stores repository-relative artifact paths and exact digests only—not source snapshots, prompts, approvals themselves, secrets, or analytics evidence.",
+      inputSchema: {
+        project_path: projectPathSchema.optional(),
+        workflow_id: wizardCheckpointSchema.shape.workflow_id.optional(),
+        completed_step: workflowStepSchema,
+        artifact_paths: z
+          .object({
+            tracking_plan: relativePath.optional(),
+            setup_plan: relativePath.optional(),
+            approval: relativePath.optional(),
+            apply_result: relativePath.optional(),
+            verification_session: relativePath.optional(),
+            verification_result: relativePath.optional(),
+          })
+          .strict()
+          .optional(),
+      },
+      outputSchema: wizardCheckpointSchema.shape,
+      annotations: localStateAnnotations,
+    },
+    async ({ project_path, workflow_id, completed_step, artifact_paths }) => {
+      try {
+        const projectRoot = await resolveProjectPath(root, project_path);
+        const artifactPaths = artifact_paths
+          ? Object.fromEntries(
+              Object.entries(artifact_paths).filter(
+                (entry): entry is [string, string] => entry[1] !== undefined,
+              ),
+            )
+          : undefined;
+        const result = await saveWorkflowCheckpoint({
+          projectRoot,
+          completedStep: completed_step,
+          ...(workflow_id ? { workflowId: workflow_id } : {}),
+          ...(artifactPaths ? { artifactPaths } : {}),
+        });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "resume_workflow",
+    {
+      title: "Resume setup workflow",
+      description:
+        "Validate checkpoint digests, expiry, apply locks, and one-time state records, then return one deterministic next action. Never invokes a model, executes tools, replays approval, or collects evidence.",
+      inputSchema: {
+        project_path: projectPathSchema.optional(),
+        workflow_id: wizardCheckpointSchema.shape.workflow_id,
+      },
+      outputSchema: workflowResumeResultSchema.shape,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ project_path, workflow_id }) => {
+      try {
+        const projectRoot = await resolveProjectPath(root, project_path);
+        const result = await resumeWorkflow(projectRoot, workflow_id);
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result,

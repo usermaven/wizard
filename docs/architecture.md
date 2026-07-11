@@ -48,13 +48,18 @@ installation sessions.
    and environment. `verify` independently checks exact local file state and
    combines marker-bound runtime, transport, and remote workspace evidence. It
    reports names and outcomes, not raw values.
+8. `checkpoint` records bounded workflow progress and artifact digests in
+   private local state. `resume` validates repository/artifact binding, expiry,
+   and apply records and returns exactly one next action without executing it.
 
 ## Local MCP surface
 
-The local stdio MCP server exposes `inspect_project`, `propose_tracking_plan`,
-`generate_setup_plan`, `preview_changes`, `apply_changes`,
-`prepare_verification`, and `verify_setup`. All except `apply_changes` are
-read-only. `apply_changes` is structured and confined to a canonical root, but
+The local stdio MCP server exposes `inspect_project`, `checkpoint_workflow`,
+`resume_workflow`, `propose_tracking_plan`, `generate_setup_plan`,
+`preview_changes`, `apply_changes`, `prepare_verification`, and `verify_setup`.
+All except `checkpoint_workflow` and `apply_changes` are read-only.
+`checkpoint_workflow` writes only private Wizard state. `apply_changes` is
+structured and confined to a canonical root, but
 destructive: it accepts only a separately created, exact, unexpired approval.
 The MCP server cannot create application approvals.
 
@@ -62,6 +67,9 @@ The MCP server also does not invoke a model. The client model creates the
 `ai_proposal` argument after inspecting project facts and collecting business
 context. Source access and model selection remain visible permissions of the
 agent host; the wizard never silently sends source or secrets to a third party.
+Checkpoint/resume is a setup-specific local state machine, not a generic agent
+runtime: it does not execute models, schedule work, own a tool loop, coordinate
+agents, or retain general memory.
 
 ## Remote installation sessions
 
