@@ -14,7 +14,7 @@ import {
 import { inspectProject } from "./inspector.js";
 import { proposeTrackingPlan } from "./tracking-plan.js";
 
-const WIZARD_VERSION = "0.5.0";
+const WIZARD_VERSION = "0.6.0";
 const SDK_VERSION_RANGE = "^1.5.15";
 
 export interface GenerateSetupPlanInput {

@@ -36,19 +36,21 @@ installation sessions.
    baseline into typed install/create/manual/check operations. It accepts an
    environment-variable name and key fingerprint, never the public-key value.
 4. `preview` renders each proposed operation and diff without executing it.
-5. `apply` accepts an approval identifier and an exact operation set. It rejects
-   stale file hashes, paths outside the repository, and unapproved operations.
-6. `verify` runs static, runtime, transport, and workspace-receipt checks. It
+5. `approve` requires a local interactive confirmation and emits a short-lived,
+   one-use artifact bound to the plan digest, repository root, and operation IDs.
+6. `apply` consumes that artifact. It rejects stale file hashes, paths outside
+   the repository, altered plans, and unapproved operations, and attempts file
+   rollback on failure.
+7. `verify` runs static, runtime, transport, and workspace-receipt checks. It
    reports names and outcomes, not raw values.
 
 ## Local MCP surface
 
-The local stdio MCP server currently exposes `inspect_project`,
-`propose_tracking_plan`, `generate_setup_plan`, and `preview_changes`. All are
-read-only and confined to a canonical root chosen when the process starts. The
-manifest marks future tools as planned.
-`apply_changes` will be agent-safe only in the sense that it is structured and
-bounded; it will still require explicit human approval.
+The local stdio MCP server exposes `inspect_project`, `propose_tracking_plan`,
+`generate_setup_plan`, `preview_changes`, and `apply_changes`. The first four are
+read-only. `apply_changes` is structured and confined to a canonical root, but
+destructive: it accepts only a separately created, exact, unexpired approval.
+The MCP server cannot create approvals.
 
 ## Remote installation sessions
 

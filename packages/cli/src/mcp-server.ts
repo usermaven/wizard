@@ -3,12 +3,15 @@ import { isAbsolute, resolve, sep, win32 } from "node:path";
 
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
+  applyChanges,
   generateSetupPlan,
   inspectProject,
   previewChanges,
   proposeTrackingPlan,
 } from "@usermaven/wizard-core";
 import {
+  applyResultSchema,
+  changeApprovalSchema,
   changePreviewSchema,
   projectInspectionSchema,
   setupPlanSchema,
@@ -17,7 +20,7 @@ import {
 } from "@usermaven/wizard-schemas";
 import { z } from "zod";
 
-const SERVER_VERSION = "0.5.0";
+const SERVER_VERSION = "0.6.0";
 
 const projectPathSchema = z
   .string()
@@ -39,6 +42,13 @@ const readOnlyAnnotations = {
   readOnlyHint: true,
   destructiveHint: false,
   idempotentHint: true,
+  openWorldHint: false,
+} as const;
+
+const destructiveAnnotations = {
+  readOnlyHint: false,
+  destructiveHint: true,
+  idempotentHint: false,
   openWorldHint: false,
 } as const;
 
@@ -208,6 +218,36 @@ export async function createWizardMcpServer(
     async ({ setup_plan }) => {
       try {
         const result = previewChanges(setup_plan);
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "apply_changes",
+    {
+      title: "Apply approved setup operations",
+      description:
+        "Apply only operations authorized by an unexpired, digest-bound approval created through the interactive local CLI. Uses atomic writes, stale checks, shell-free commands, rollback snapshots, and one-time replay records.",
+      inputSchema: {
+        setup_plan: setupPlanSchema,
+        approval: changeApprovalSchema,
+      },
+      outputSchema: applyResultSchema.shape,
+      annotations: destructiveAnnotations,
+    },
+    async ({ setup_plan, approval }) => {
+      try {
+        const result = await applyChanges({
+          projectRoot: root,
+          plan: setup_plan,
+          approval,
+        });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],
           structuredContent: result,

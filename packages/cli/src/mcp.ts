@@ -10,8 +10,9 @@ Usage:
   usermaven-wizard-mcp [--root <path>]
   usermaven-wizard-mcp --help
 
-The server uses stdio and exposes read-only tools. --root defaults to the current
-working directory and defines the filesystem boundary for every tool call.`;
+The server uses stdio and exposes planning tools plus approval-bound application.
+--root defaults to the current working directory and defines the filesystem
+boundary for every tool call.`;
 
 function parseRoot(arguments_: string[]): string | null {
   if (arguments_.includes("--help") || arguments_.includes("-h")) return null;

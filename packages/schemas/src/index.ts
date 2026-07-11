@@ -1,4 +1,5 @@
 export * from "./agent-event.js";
+export * from "./apply.js";
 export * from "./change-preview.js";
 export * from "./common.js";
 export * from "./manifest.js";

@@ -20,19 +20,20 @@ const mutating = (
   name: string,
   description: string,
   availability: "implemented" | "planned" = "planned",
+  agentSafe = true,
 ) => ({
   name,
   description,
   mutates_repository: true,
   requires_approval: true,
-  agent_safe: true,
+  agent_safe: agentSafe,
   availability,
 });
 
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.5.0",
+  version: "0.6.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -55,7 +56,17 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Render a saved setup plan without executing its operations.",
       "implemented",
     ),
-    mutating("apply", "Apply explicitly approved package and file operations."),
+    mutating(
+      "approve",
+      "Interactively approve exact setup-plan operations and create an expiring artifact.",
+      "implemented",
+      false,
+    ),
+    mutating(
+      "apply",
+      "Apply explicitly approved package and file operations.",
+      "implemented",
+    ),
     readOnly("verify", "Run static, runtime, transport, and receipt checks."),
     readOnly("doctor", "Diagnose configuration and connectivity problems."),
     readOnly(
@@ -88,6 +99,7 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     mutating(
       "apply_changes",
       "Apply only the operations covered by explicit approval.",
+      "implemented",
     ),
     readOnly(
       "verify_setup",

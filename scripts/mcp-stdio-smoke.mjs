@@ -15,7 +15,7 @@ try {
   const names = listed.tools.map((tool) => tool.name);
   if (
     names.join(",") !==
-    "inspect_project,propose_tracking_plan,generate_setup_plan,preview_changes"
+    "inspect_project,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes"
   ) {
     throw new Error(`Unexpected MCP tools: ${names.join(", ")}`);
   }

@@ -30,7 +30,7 @@ export const operationSchema = z.discriminatedUnion("type", [
     .extend({
       type: z.literal("edit_file"),
       path: relativePath,
-      before_hash: z.string().min(16).max(128),
+      before_hash: z.string().regex(/^sha256:[a-f0-9]{64}$/u),
       unified_diff: z.string().min(1).max(500_000),
       requires_approval: z.literal(true),
     })
@@ -117,7 +117,17 @@ export const setupPlanSchema = z
     created_at: isoDateTime,
     wizard_version: z.string().min(1).max(64),
   })
-  .strict();
+  .strict()
+  .superRefine((plan, context) => {
+    const ids = plan.operations.map((operation) => operation.id);
+    if (new Set(ids).size !== ids.length) {
+      context.addIssue({
+        code: "custom",
+        message: "operation IDs must be unique",
+        path: ["operations"],
+      });
+    }
+  });
 
 export type SetupOperation = z.infer<typeof operationSchema>;
 export type SetupPlan = z.infer<typeof setupPlanSchema>;

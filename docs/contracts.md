@@ -38,6 +38,20 @@ variable names. It never contains the public-key value. Change previews render
 typed operation content and explicitly mark previews containing repository source
 context; rendering does not execute an operation.
 
+## Approval and application result
+
+A change approval binds one setup-plan digest, canonical repository-root
+fingerprint, exact unique operation IDs, confirmation time, and expiry. The
+current issuer is an interactive local user. Application validates every binding
+and records consumption under `.usermaven/apply/` so an approval cannot be
+replayed.
+
+The application result records normalized operation outcomes, rollback status
+and warnings, timestamps, and the relative state-record path. It never includes
+source, command output, environment values, or secrets. Successful file changes
+are atomic. Rollback restores captured files, but package-manager caches,
+`node_modules`, and build artifacts can require manual cleanup.
+
 ## Agent event stream
 
 Long-running commands emit one JSON object per line. Events include a run ID,

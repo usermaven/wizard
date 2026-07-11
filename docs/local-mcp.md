@@ -1,15 +1,17 @@
 # Local MCP development playbook
 
 The Usermaven Wizard MCP server runs as a local child process over stdio. It has
-no listening port and makes no remote Usermaven calls. Version `0.5.0` exposes:
+no listening port and makes no remote Usermaven calls. Version `0.6.0` exposes:
 
 - `inspect_project`: normalized framework and analytics evidence
 - `propose_tracking_plan`: a deterministic, review-required baseline plan
 - `generate_setup_plan`: typed SDK installation and integration operations
 - `preview_changes`: rendered operations with no execution
+- `apply_changes`: exact operations authorized by a separate approval artifact
 
-Both tools are read-only, non-destructive, idempotent, and confined to one root
-selected when the process starts.
+The first four tools are read-only, non-destructive, and idempotent.
+`apply_changes` mutates the repository and is not idempotent. Every tool is
+confined to one root selected when the process starts.
 
 ## Build and run from this repository
 
@@ -44,12 +46,12 @@ Most desktop and editor clients accept a configuration shaped like this:
 
 Restart or reload the client after changing its MCP configuration. The client
 should discover exactly `inspect_project`, `propose_tracking_plan`,
-`generate_setup_plan`, and `preview_changes`.
+`generate_setup_plan`, `preview_changes`, and `apply_changes`.
 
 After the npm package is published, the equivalent command will be:
 
 ```sh
-npx -y -p @usermaven/wizard@0.5.0 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.6.0 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 
@@ -78,9 +80,12 @@ escape rejection.
 - Source and repository text are treated as untrusted data.
 - Results contain normalized tokens and locations, never snippets, environment
   values, raw analytics payloads, or secrets.
-- Setup plans and previews contain approval-required mutation operations, but no
-  current tool installs packages, edits files, opens a browser, or contacts the
-  remote Usermaven MCP.
+- `apply_changes` requires an unexpired approval created by the interactive CLI;
+  the MCP server cannot mint or broaden approval.
+- Applying may install packages, edit files, create files, and run an allowlisted
+  build check. It never opens a browser or contacts the remote Usermaven MCP.
+- Package-manager caches, `node_modules`, and build outputs are outside the
+  rollback snapshot; review the returned warnings after a failed apply.
 
 ## Troubleshooting
 

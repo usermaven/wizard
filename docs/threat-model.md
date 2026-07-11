@@ -31,12 +31,17 @@ network boundary. Output shown for human approval crosses a decision boundary.
 | Wrong-workspace writes or reads                          | Display the selected workspace and public-key fingerprint; scope OAuth/session tokens to one workspace.      |
 | Dependency compromise                                    | Pin release tooling, publish with provenance, review lockfile changes, and minimize runtime dependencies.    |
 | Stale-plan overwrite                                     | Record and re-check file content hashes before applying an edit.                                             |
+| Forged, broadened, or replayed approval                  | Mint approval only after exact interactive confirmation; bind plan/root/IDs/expiry and consume it once.      |
+| Partial mutation after failure                           | Snapshot bounded regular files, write atomically, roll back in reverse order, and report residual effects.   |
+| Package lifecycle or shell injection                     | Use shell-free argument arrays, allowlist checks, and disable dependency lifecycle scripts during install.   |
 | Token theft or replay                                    | Use short-lived, audience-bound tokens, rotation, revocation, PKCE for OAuth, and replay detection.          |
 
 ## Current limitations
 
 The inspector is a privacy-reducing application control, not an operating-system
 sandbox. A process with broader filesystem permission still relies on the
-wizard's traversal rules. The local MCP surface is read-only and stdio-only. The
-repository does not yet mutate files, capture traffic, or authenticate to
-Usermaven. Those features must satisfy this threat model before release.
+wizard's traversal rules. The local MCP surface is stdio-only; its one mutating
+tool requires an externally minted approval. Package-manager cache and
+`node_modules` changes and repository-defined build artifacts are outside the
+file rollback boundary. The repository does not yet capture traffic or
+authenticate to Usermaven.

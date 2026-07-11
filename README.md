@@ -7,16 +7,17 @@ setup works. It is designed for both people and coding agents.
 > [!IMPORTANT]
 > This repository is under active development. Versioned contracts,
 > machine-readable manifests, bounded project inspection, and deterministic
-> baseline tracking plans, approval-ready setup plans, change previews, and a
-> read-only local MCP server are implemented. Repository mutation and end-to-end
-> verification are not implemented yet.
+> baseline tracking plans, approval-ready setup plans, change previews,
+> approval-bound repository application, and a local MCP server are implemented.
+> End-to-end verification is not implemented yet.
 
 ## Design promises
 
 - Source code and local environment values stay on the developer's machine by
   default.
 - Inspection and planning never mutate the repository.
-- Every package installation and file change requires explicit approval.
+- Every package installation and file change requires an exact, short-lived,
+  interactive approval.
 - Verification returns normalized results, never captured event payloads.
 - Repository content is untrusted data, not instructions for the wizard or agent.
 - Remote Usermaven MCP handles authenticated workspace operations; the local
@@ -27,9 +28,9 @@ setup works. It is designed for both people and coding agents.
 - `@usermaven/wizard-schemas`: versioned Zod contracts for tracking plans, setup
   plans, project inspections, verification results, agent NDJSON events, and the
   command manifest.
-- `@usermaven/wizard-core`: reusable local inspection and planning engine.
-- `@usermaven/wizard`: the CLI and local MCP server. `inspect`, `plan`,
-  `manifest`, and the read-only MCP binary are currently executable.
+- `@usermaven/wizard-core`: reusable local inspection, planning, approval, and
+  application engine.
+- `@usermaven/wizard`: the CLI and local MCP server.
 
 ## Inspect a project
 
@@ -68,13 +69,31 @@ Setup generation references the public key through a framework-specific
 environment-variable name and never accepts its value. Previewing renders typed
 operations without installing packages, writing files, or running commands.
 
+## Approve and apply exact operations
+
+```sh
+usermaven-wizard approve ./setup-plan.json \
+  --operations install-sdk,create-integration \
+  --root /absolute/path/to/project \
+  --output ./approval.json
+
+usermaven-wizard apply ./setup-plan.json \
+  --approval ./approval.json \
+  --root /absolute/path/to/project
+```
+
+Approval requires an interactive terminal. It is bound to the plan digest,
+canonical repository root, exact operation IDs, and an expiry; it is consumed
+once. See the [application playbook](docs/apply-playbook.md).
+
 ## Run the local MCP server
 
 ```sh
 node packages/cli/dist/mcp.js --root /absolute/path/to/project
 ```
 
-It exposes inspection, tracking-plan, setup-plan, and preview tools over stdio. See the
+It exposes inspection, tracking-plan, setup-plan, preview, and approval-bound
+application tools over stdio. See the
 [local MCP development playbook](docs/local-mcp.md) for client configuration,
 security boundaries, and troubleshooting.
 

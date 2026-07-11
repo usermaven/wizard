@@ -1,11 +1,20 @@
-import { mkdtemp, mkdir, rm, symlink } from "node:fs/promises";
+import {
+  mkdtemp,
+  mkdir,
+  readFile,
+  rm,
+  symlink,
+  writeFile,
+} from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
+import { createChangeApproval } from "@usermaven/wizard-core";
 import {
+  applyResultSchema,
   changePreviewSchema,
   projectInspectionSchema,
   setupPlanSchema,
@@ -28,7 +37,7 @@ async function connectedServer(root: string) {
 }
 
 describe("local MCP server", () => {
-  it("advertises only the two read-only tools", async () => {
+  it("advertises four read-only tools and one destructive apply tool", async () => {
     const { client, server } = await connectedServer(fixtures);
     try {
       const { tools } = await client.listTools();
@@ -38,15 +47,27 @@ describe("local MCP server", () => {
         "propose_tracking_plan",
         "generate_setup_plan",
         "preview_changes",
+        "apply_changes",
       ]);
+      const readOnlyTools = tools.filter(
+        (tool) => tool.name !== "apply_changes",
+      );
       expect(
-        tools.every(
+        readOnlyTools.every(
           (tool) =>
             tool.annotations?.readOnlyHint === true &&
             tool.annotations.destructiveHint === false &&
             tool.annotations.openWorldHint === false,
         ),
       ).toBe(true);
+      expect(
+        tools.find((tool) => tool.name === "apply_changes")?.annotations,
+      ).toMatchObject({
+        readOnlyHint: false,
+        destructiveHint: true,
+        idempotentHint: false,
+        openWorldHint: false,
+      });
     } finally {
       await client.close();
       await server.close();
@@ -178,6 +199,51 @@ describe("local MCP server", () => {
     } finally {
       await client.close();
       await server.close();
+    }
+  });
+
+  it("applies only operations covered by a CLI-style approval artifact", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-mcp-apply-"));
+    await mkdir(join(root, "src"));
+    await writeFile(
+      join(root, "package.json"),
+      JSON.stringify({ name: "mcp-apply" }),
+    );
+    const { client, server } = await connectedServer(root);
+    try {
+      const generated = await client.callTool({
+        name: "generate_setup_plan",
+        arguments: {
+          workspace: {
+            display_name: "Example workspace",
+            region: "us",
+            public_key_fingerprint: "sha256:abcdef1234567890",
+            tracking_host: "https://events.example.com",
+          },
+        },
+      });
+      const plan = setupPlanSchema.parse(generated.structuredContent);
+      const approval = await createChangeApproval({
+        plan,
+        projectRoot: root,
+        operationIds: ["create-usermaven-client"],
+        confirmedByInteractiveUser: true,
+      });
+      const applied = await client.callTool({
+        name: "apply_changes",
+        arguments: { setup_plan: plan, approval },
+      });
+      const result = applyResultSchema.parse(applied.structuredContent);
+
+      expect(applied.isError).not.toBe(true);
+      expect(result.outcome).toBe("succeeded");
+      expect(
+        await readFile(join(root, "src", "usermaven.ts"), "utf8"),
+      ).toContain("usermavenClient");
+    } finally {
+      await client.close();
+      await server.close();
+      await rm(root, { recursive: true });
     }
   });
 

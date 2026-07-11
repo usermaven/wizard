@@ -8,7 +8,7 @@ import {
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.5.0";
+const WIZARD_VERSION = "0.6.0";
 
 export interface ProposeTrackingPlanOptions {
   now?: () => Date;

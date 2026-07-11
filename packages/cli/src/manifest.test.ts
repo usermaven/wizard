@@ -28,6 +28,7 @@ describe("CLI manifest", () => {
       "propose_tracking_plan",
       "generate_setup_plan",
       "preview_changes",
+      "apply_changes",
     ]);
   });
 });
