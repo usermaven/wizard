@@ -19,6 +19,8 @@ import {
   projectInspectionSchema,
   setupPlanSchema,
   trackingPlanSchema,
+  verificationResultSchema,
+  verificationSessionSchema,
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 import { describe, expect, it } from "vitest";
@@ -108,7 +110,7 @@ function generatedInstrumentation(plan: TrackingPlan) {
 }
 
 describe("local MCP server", () => {
-  it("advertises four read-only tools and one destructive apply tool", async () => {
+  it("advertises six read-only tools and one destructive apply tool", async () => {
     const { client, server } = await connectedServer(fixtures);
     try {
       const { tools } = await client.listTools();
@@ -119,6 +121,8 @@ describe("local MCP server", () => {
         "generate_setup_plan",
         "preview_changes",
         "apply_changes",
+        "prepare_verification",
+        "verify_setup",
       ]);
       const readOnlyTools = tools.filter(
         (tool) => tool.name !== "apply_changes",
@@ -241,6 +245,28 @@ describe("local MCP server", () => {
       expect(JSON.stringify({ plan, preview })).not.toContain(
         "actual-workspace-key",
       );
+
+      const prepared = await client.callTool({
+        name: "prepare_verification",
+        arguments: { setup_plan: plan, environment: "test" },
+      });
+      const session = verificationSessionSchema.parse(
+        prepared.structuredContent,
+      );
+      const verified = await client.callTool({
+        name: "verify_setup",
+        arguments: {
+          project_path: "react-vite",
+          setup_plan: plan,
+          session,
+          evidence: { session_id: session.session_id },
+        },
+      });
+      const verification = verificationResultSchema.parse(
+        verified.structuredContent,
+      );
+      expect(verification.outcome).toBe("fail");
+      expect(JSON.stringify(verification)).not.toContain("Synthetic checkout");
     } finally {
       await client.close();
       await server.close();

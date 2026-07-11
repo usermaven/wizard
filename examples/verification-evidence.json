@@ -1,0 +1,31 @@
+{
+  "session_id": "verify_replace-session-id",
+  "runtime": {
+    "source": "e2e_test",
+    "observed_at": "2026-07-11T15:02:00Z",
+    "event_names": ["link_created"],
+    "property_names": ["workspace_id"],
+    "identified_user": true,
+    "identified_company": false,
+    "verification_marker_matched": true
+  },
+  "transport": {
+    "source": "browser_observer",
+    "observed_at": "2026-07-11T15:02:01Z",
+    "tracking_host": "https://events.example.com",
+    "accepted": true,
+    "status_code": 202,
+    "event_names": ["link_created"],
+    "verification_marker_matched": true
+  },
+  "workspace_receipt": {
+    "source": "remote_usermaven_mcp",
+    "observed_at": "2026-07-11T15:03:00Z",
+    "public_key_fingerprint": "sha256:replace-with-workspace-fingerprint",
+    "event_names": ["link_created"],
+    "property_names": ["workspace_id"],
+    "identified_user": true,
+    "identified_company": false,
+    "verification_marker_matched": true
+  }
+}

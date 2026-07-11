@@ -18,7 +18,7 @@ import {
 
 import { inspectProject } from "./inspector.js";
 
-const WIZARD_VERSION = "0.8.0";
+const WIZARD_VERSION = "0.9.0";
 const SDK_VERSION_RANGE = "^1.5.15";
 
 function boundedId(prefix: string, value: string): string {
@@ -215,6 +215,15 @@ export const usermaven = key
       autoPageview: false,
     })
   : null;
+
+export function usermavenVerificationProperties() {
+  const value = (globalThis as Record<string, unknown>)[
+    "__USERMAVEN_VERIFICATION_ID__"
+  ];
+  return typeof value === "string"
+    ? { _usermaven_verification_id: value }
+    : {};
+}
 `;
 }
 

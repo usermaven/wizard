@@ -19,7 +19,7 @@ try {
   const names = listed.tools.map((tool) => tool.name);
   if (
     names.join(",") !==
-    "inspect_project,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes"
+    "inspect_project,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes,prepare_verification,verify_setup"
   ) {
     throw new Error(`Unexpected MCP tools: ${names.join(", ")}`);
   }
@@ -139,6 +139,28 @@ try {
       generated.structuredContent.operations.length
   ) {
     throw new Error("MCP preview smoke call failed");
+  }
+  const prepared = await client.callTool({
+    name: "prepare_verification",
+    arguments: {
+      setup_plan: generated.structuredContent,
+      environment: "smoke",
+    },
+  });
+  if (prepared.isError || !prepared.structuredContent?.session_id) {
+    throw new Error("MCP verification-session smoke call failed");
+  }
+  const verified = await client.callTool({
+    name: "verify_setup",
+    arguments: {
+      project_path: "react-vite",
+      setup_plan: generated.structuredContent,
+      session: prepared.structuredContent,
+      evidence: { session_id: prepared.structuredContent.session_id },
+    },
+  });
+  if (verified.isError || !verified.structuredContent?.outcome) {
+    throw new Error("MCP verification smoke call failed");
   }
   process.stdout.write("stdio MCP smoke passed\n");
 } catch (error) {

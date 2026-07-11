@@ -6,6 +6,80 @@ import {
   safeValueSchema,
   schemaVersion,
 } from "./common.js";
+import { sha256DigestSchema } from "./apply.js";
+
+const observedNames = z.array(z.string().min(1).max(128)).max(1_000);
+
+export const verificationSessionSchema = z
+  .object({
+    schema_version: schemaVersion,
+    session_id: z.string().regex(/^verify_[a-zA-Z0-9-]{8,120}$/u),
+    plan_id: z.string().min(8).max(128),
+    plan_digest: sha256DigestSchema,
+    environment: z.string().min(1).max(64),
+    marker_property: z.literal("_usermaven_verification_id"),
+    created_at: isoDateTime,
+    expires_at: isoDateTime,
+  })
+  .strict()
+  .superRefine((session, context) => {
+    const duration =
+      Date.parse(session.expires_at) - Date.parse(session.created_at);
+    if (duration <= 0 || duration > 60 * 60 * 1_000) {
+      context.addIssue({
+        code: "custom",
+        message:
+          "verification session expiry must be after creation and within one hour",
+        path: ["expires_at"],
+      });
+    }
+  });
+
+export const runtimeVerificationEvidenceSchema = z
+  .object({
+    source: z.enum(["browser_observer", "e2e_test"]),
+    observed_at: isoDateTime,
+    event_names: observedNames,
+    property_names: observedNames,
+    identified_user: z.boolean(),
+    identified_company: z.boolean(),
+    verification_marker_matched: z.boolean(),
+  })
+  .strict();
+
+export const transportVerificationEvidenceSchema = z
+  .object({
+    source: z.enum(["browser_observer", "e2e_test"]),
+    observed_at: isoDateTime,
+    tracking_host: z.url().max(2_000),
+    accepted: z.boolean(),
+    status_code: z.number().int().min(100).max(599).nullable(),
+    event_names: observedNames,
+    verification_marker_matched: z.boolean(),
+  })
+  .strict();
+
+export const workspaceReceiptEvidenceSchema = z
+  .object({
+    source: z.literal("remote_usermaven_mcp"),
+    observed_at: isoDateTime,
+    public_key_fingerprint: z.string().startsWith("sha256:").max(128),
+    event_names: observedNames,
+    property_names: observedNames,
+    identified_user: z.boolean(),
+    identified_company: z.boolean(),
+    verification_marker_matched: z.boolean(),
+  })
+  .strict();
+
+export const verificationEvidenceSchema = z
+  .object({
+    session_id: z.string().regex(/^verify_[a-zA-Z0-9-]{8,120}$/u),
+    runtime: runtimeVerificationEvidenceSchema.optional(),
+    transport: transportVerificationEvidenceSchema.optional(),
+    workspace_receipt: workspaceReceiptEvidenceSchema.optional(),
+  })
+  .strict();
 
 export const verificationCheckSchema = z
   .object({
@@ -29,17 +103,49 @@ export const verificationResultSchema = z
     started_at: isoDateTime,
     completed_at: isoDateTime,
     outcome: checkOutcomeSchema,
-    checks: z.array(verificationCheckSchema),
+    checks: z.array(verificationCheckSchema).max(250),
     received: z
       .object({
-        event_names: z.array(z.string().min(1).max(128)),
-        property_names: z.array(z.string().min(1).max(128)),
+        event_names: observedNames,
+        property_names: observedNames,
         identified_user: z.boolean(),
         identified_company: z.boolean(),
       })
       .strict(),
   })
-  .strict();
+  .strict()
+  .superRefine((result, context) => {
+    if (Date.parse(result.completed_at) < Date.parse(result.started_at)) {
+      context.addIssue({
+        code: "custom",
+        message: "verification cannot complete before it starts",
+        path: ["completed_at"],
+      });
+    }
+    const expected = result.checks.some((item) => item.outcome === "fail")
+      ? "fail"
+      : result.checks.some((item) => item.outcome === "warn")
+        ? "warn"
+        : "pass";
+    if (result.outcome !== expected) {
+      context.addIssue({
+        code: "custom",
+        message: "verification outcome must reflect its checks",
+        path: ["outcome"],
+      });
+    }
+  });
 
 export type VerificationCheck = z.infer<typeof verificationCheckSchema>;
 export type VerificationResult = z.infer<typeof verificationResultSchema>;
+export type VerificationSession = z.infer<typeof verificationSessionSchema>;
+export type RuntimeVerificationEvidence = z.infer<
+  typeof runtimeVerificationEvidenceSchema
+>;
+export type TransportVerificationEvidence = z.infer<
+  typeof transportVerificationEvidenceSchema
+>;
+export type WorkspaceReceiptEvidence = z.infer<
+  typeof workspaceReceiptEvidenceSchema
+>;
+export type VerificationEvidence = z.infer<typeof verificationEvidenceSchema>;

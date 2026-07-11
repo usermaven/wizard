@@ -38,7 +38,11 @@ concrete implementation point cannot be verified, defer that item with a clear
 reason; never invent a trigger. Do not touch environment files, credentials,
 dependency directories, .git, or .usermaven. Do not include secrets or
 unapproved properties. Do not run or apply the changes—the wizard will preview
-them and require separate interactive approval.
+them and require separate interactive approval. For client events, merge
+usermavenVerificationProperties() into verification-capable calls; it is empty
+unless an authorized E2E run sets __USERMAVEN_VERIFICATION_ID__. For server
+events, apply the same reserved property only when the controlled process has a
+USERMAVEN_VERIFICATION_ID environment value.
 ```
 
 ## Planning instructions for an agent

@@ -65,3 +65,24 @@ const result = await applyChanges({ projectRoot, plan: setup, approval });
 An embedding application must collect a real interactive confirmation before
 calling `createChangeApproval`; the boolean is a procedural boundary, not user
 authentication or a cryptographic signature.
+
+The core also creates short-lived verification sessions and evaluates exact
+local state plus normalized live evidence:
+
+```ts
+import { createVerificationSession, verifySetup } from "@usermaven/wizard-core";
+
+const session = createVerificationSession({
+  plan: setup,
+  environment: "staging",
+});
+const verification = await verifySetup({
+  projectRoot,
+  plan: setup,
+  session,
+  evidence,
+});
+```
+
+Evidence contains names, outcomes, and marker matching—not raw analytics
+payloads or property values.

@@ -44,16 +44,19 @@ installation sessions.
 6. `apply` consumes that artifact. It rejects stale file hashes, paths outside
    the repository, altered plans, and unapproved operations, and attempts file
    rollback on failure.
-7. `verify` runs static, runtime, transport, and workspace-receipt checks. It
+7. `verification-session` creates a short-lived marker bound to the setup plan
+   and environment. `verify` independently checks exact local file state and
+   combines marker-bound runtime, transport, and remote workspace evidence. It
    reports names and outcomes, not raw values.
 
 ## Local MCP surface
 
 The local stdio MCP server exposes `inspect_project`, `propose_tracking_plan`,
-`generate_setup_plan`, `preview_changes`, and `apply_changes`. The first four are
+`generate_setup_plan`, `preview_changes`, `apply_changes`,
+`prepare_verification`, and `verify_setup`. All except `apply_changes` are
 read-only. `apply_changes` is structured and confined to a canonical root, but
 destructive: it accepts only a separately created, exact, unexpired approval.
-The MCP server cannot create approvals.
+The MCP server cannot create application approvals.
 
 The MCP server also does not invoke a model. The client model creates the
 `ai_proposal` argument after inspecting project facts and collecting business

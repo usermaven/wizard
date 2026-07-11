@@ -79,7 +79,7 @@ const trackingPlan = trackingPlanSchema.parse({
     },
   },
   created_at: "2026-07-11T13:00:00Z",
-  wizard_version: "0.8.0",
+  wizard_version: "0.9.0",
 });
 const instrumentationProposal = {
   schema_version: "1" as const,

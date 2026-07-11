@@ -5,9 +5,11 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import {
   applyChanges,
   createAiTrackingPlan,
+  createVerificationSession,
   generateSetupPlan,
   inspectProject,
   previewChanges,
+  verifySetup,
 } from "@usermaven/wizard-core";
 import {
   aiInstrumentationProposalSchema,
@@ -19,11 +21,14 @@ import {
   projectInspectionSchema,
   setupPlanSchema,
   trackingPlanSchema,
+  verificationEvidenceSchema,
+  verificationResultSchema,
+  verificationSessionSchema,
   workspacePublicConfigSchema,
 } from "@usermaven/wizard-schemas";
 import { z } from "zod";
 
-const SERVER_VERSION = "0.8.0";
+const SERVER_VERSION = "0.9.0";
 
 const projectPathSchema = z
   .string()
@@ -253,18 +258,84 @@ export async function createWizardMcpServer(
       description:
         "Apply only operations authorized by an unexpired, digest-bound approval created through the interactive local CLI. Uses atomic writes, stale checks, shell-free commands, rollback snapshots, and one-time replay records.",
       inputSchema: {
+        project_path: projectPathSchema.optional(),
         setup_plan: setupPlanSchema,
         approval: changeApprovalSchema,
       },
       outputSchema: applyResultSchema.shape,
       annotations: destructiveAnnotations,
     },
-    async ({ setup_plan, approval }) => {
+    async ({ project_path, setup_plan, approval }) => {
       try {
+        const projectRoot = await resolveProjectPath(root, project_path);
         const result = await applyChanges({
-          projectRoot: root,
+          projectRoot,
           plan: setup_plan,
           approval,
+        });
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "prepare_verification",
+    {
+      title: "Prepare verification session",
+      description:
+        "Create a short-lived verification session and sanitized marker property bound to one setup plan and environment. Does not modify files or contact Usermaven.",
+      inputSchema: {
+        setup_plan: setupPlanSchema,
+        environment: z.string().min(1).max(64),
+        ttl_minutes: z.number().int().min(1).max(60).optional(),
+      },
+      outputSchema: verificationSessionSchema.shape,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ setup_plan, environment, ttl_minutes }) => {
+      try {
+        const result = createVerificationSession(
+          { plan: setup_plan, environment },
+          { ttlMs: (ttl_minutes ?? 30) * 60 * 1_000 },
+        );
+        return {
+          content: [{ type: "text" as const, text: JSON.stringify(result) }],
+          structuredContent: result,
+        };
+      } catch (error) {
+        return toolError(error);
+      }
+    },
+  );
+
+  server.registerTool(
+    "verify_setup",
+    {
+      title: "Verify Usermaven setup",
+      description:
+        "Verify exact local file state and combine marker-bound runtime, collector, and remote workspace evidence without accepting or returning raw analytics payloads.",
+      inputSchema: {
+        project_path: projectPathSchema.optional(),
+        setup_plan: setupPlanSchema,
+        session: verificationSessionSchema,
+        evidence: verificationEvidenceSchema,
+      },
+      outputSchema: verificationResultSchema.shape,
+      annotations: readOnlyAnnotations,
+    },
+    async ({ project_path, setup_plan, session, evidence }) => {
+      try {
+        const projectRoot = await resolveProjectPath(root, project_path);
+        const result = await verifySetup({
+          projectRoot,
+          plan: setup_plan,
+          session,
+          evidence,
         });
         return {
           content: [{ type: "text" as const, text: JSON.stringify(result) }],

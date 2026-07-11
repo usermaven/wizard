@@ -1,15 +1,17 @@
 # Local MCP development playbook
 
 The Usermaven Wizard MCP server runs as a local child process over stdio. It has
-no listening port and makes no remote Usermaven calls. Version `0.8.0` exposes:
+no listening port and makes no remote Usermaven calls. Version `0.9.0` exposes:
 
 - `inspect_project`: normalized framework and analytics evidence
 - `propose_tracking_plan`: validate and stamp an AI-generated tracking plan
 - `generate_setup_plan`: typed SDK and source-aware AI instrumentation operations
 - `preview_changes`: rendered operations with no execution
 - `apply_changes`: exact operations authorized by a separate approval artifact
+- `prepare_verification`: a short-lived marker session for one plan/environment
+- `verify_setup`: exact local checks plus normalized live evidence evaluation
 
-The first four tools are read-only, non-destructive, and idempotent.
+All tools except `apply_changes` are read-only and non-destructive.
 `apply_changes` mutates the repository and is not idempotent. Every tool is
 confined to one root selected when the process starts.
 
@@ -46,12 +48,13 @@ Most desktop and editor clients accept a configuration shaped like this:
 
 Restart or reload the client after changing its MCP configuration. The client
 should discover exactly `inspect_project`, `propose_tracking_plan`,
-`generate_setup_plan`, `preview_changes`, and `apply_changes`.
+`generate_setup_plan`, `preview_changes`, `apply_changes`,
+`prepare_verification`, and `verify_setup`.
 
 After the npm package is published, the equivalent command will be:
 
 ```sh
-npx -y -p @usermaven/wizard@0.8.0 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.9.0 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 
@@ -94,6 +97,10 @@ escape rejection.
   build check. It never opens a browser or contacts the remote Usermaven MCP.
 - Package-manager caches, `node_modules`, and build outputs are outside the
   rollback snapshot; review the returned warnings after a failed apply.
+- Verification evidence is strict and normalized. It can contain event/property
+  names, collector host/status, workspace fingerprint, identity booleans, and
+  marker matching, but never payload bodies, property values, headers, cookies,
+  or user identifiers.
 
 ## Troubleshooting
 

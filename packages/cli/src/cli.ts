@@ -8,10 +8,12 @@ import {
   approvalConfirmation,
   createAiTrackingPlan,
   createChangeApproval,
+  createVerificationSession,
   digestSetupPlan,
   generateSetupPlan,
   inspectProject,
   previewChanges,
+  verifySetup,
 } from "@usermaven/wizard-core";
 import {
   aiTrackingProposalSchema,
@@ -19,6 +21,8 @@ import {
   businessContextSchema,
   changeApprovalSchema,
   setupPlanSchema,
+  verificationEvidenceSchema,
+  verificationSessionSchema,
 } from "@usermaven/wizard-schemas";
 
 import { manifest } from "./manifest.js";
@@ -38,6 +42,10 @@ Usage:
     [--ttl-minutes <1-60>] [--output <approval.json>]
   usermaven-wizard apply <setup-plan.json> --approval <approval.json>
     [--root <path>] [--compact]
+  usermaven-wizard verification-session <setup-plan.json>
+    --environment <name> [--ttl-minutes <1-60>] [--compact]
+  usermaven-wizard verify <setup-plan.json> --session <session.json>
+    --evidence <evidence.json> [--root <path>] [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
@@ -108,7 +116,11 @@ async function main(): Promise<void> {
           ? ["--root", "--operations", "--ttl-minutes", "--output"]
           : command === "apply"
             ? ["--root", "--approval"]
-            : [];
+            : command === "verification-session"
+              ? ["--environment", "--ttl-minutes"]
+              : command === "verify"
+                ? ["--root", "--session", "--evidence"]
+                : [];
   const parsed = parseArguments(flags, allowedOptions);
   const spacing = parsed.compact ? undefined : 2;
 
@@ -266,6 +278,53 @@ async function main(): Promise<void> {
       approval,
     });
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "verification-session") {
+    if (parsed.positionals.length !== 1) {
+      throw new Error("Verification-session requires one setup-plan JSON path");
+    }
+    const plan = setupPlanSchema.parse(
+      await readJson(parsed.positionals[0]!, 5_000_000),
+    );
+    const ttlMinutes = Number.parseInt(
+      parsed.options.get("--ttl-minutes") ?? "30",
+      10,
+    );
+    if (!Number.isInteger(ttlMinutes) || ttlMinutes < 1 || ttlMinutes > 60) {
+      throw new Error("--ttl-minutes must be an integer from 1 to 60");
+    }
+    const result = createVerificationSession(
+      {
+        plan,
+        environment: requiredOption(parsed.options, "--environment"),
+      },
+      { ttlMs: ttlMinutes * 60 * 1_000 },
+    );
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "verify") {
+    if (parsed.positionals.length !== 1) {
+      throw new Error("Verify requires one setup-plan JSON path");
+    }
+    const plan = setupPlanSchema.parse(
+      await readJson(parsed.positionals[0]!, 5_000_000),
+    );
+    const session = verificationSessionSchema.parse(
+      await readJson(requiredOption(parsed.options, "--session"), 1_000_000),
+    );
+    const evidence = verificationEvidenceSchema.parse(
+      await readJson(requiredOption(parsed.options, "--evidence"), 2_000_000),
+    );
+    const result = await verifySetup({
+      projectRoot: parsed.options.get("--root") ?? process.cwd(),
+      plan,
+      session,
+      evidence,
+    });
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    if (result.outcome === "fail") process.exitCode = 1;
     return;
   }
   if (command === undefined || command === "--help" || command === "-h") {

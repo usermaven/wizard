@@ -74,3 +74,6 @@ library cannot prove who controls the terminal. Any UI or agent host embedding
 the library must independently enforce a real human confirmation. This is a
 procedural local safety boundary, not authentication or a cryptographic
 signature.
+
+After a successful apply, continue with the [verification
+playbook](verification-playbook.md).

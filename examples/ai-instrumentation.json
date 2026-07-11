@@ -7,13 +7,8 @@
       "type": "create_file",
       "summary": "Create reviewed Usermaven tracking hooks",
       "path": "src/generated-usermaven-tracking.ts",
-      "content": "export const reviewedEvents = [\"link_created\"] as const;\n",
+      "content": "import { usermaven, usermavenVerificationProperties } from \"./usermaven\";\n\nexport function trackLinkCreated(workspaceId: string) {\n  usermaven?.track(\"link_created\", {\n    workspace_id: workspaceId,\n    ...usermavenVerificationProperties(),\n  });\n}\n",
       "covers": [
-        {
-          "kind": "identity",
-          "identity_kind": "user",
-          "identifier": "user_id"
-        },
         {
           "kind": "event",
           "event_id": "link-created"
@@ -21,7 +16,16 @@
       ]
     }
   ],
-  "deferred": [],
+  "deferred": [
+    {
+      "item": {
+        "kind": "identity",
+        "identity_kind": "user",
+        "identifier": "user_id"
+      },
+      "reason": "Replace this template deferral with the verified authentication-session integration point."
+    }
+  ],
   "warnings": [],
   "generated_by": {
     "provider": "mcp-client",

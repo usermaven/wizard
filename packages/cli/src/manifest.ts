@@ -33,7 +33,7 @@ const mutating = (
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.8.0",
+  version: "0.9.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -67,7 +67,16 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Apply explicitly approved package and file operations.",
       "implemented",
     ),
-    readOnly("verify", "Run static, runtime, transport, and receipt checks."),
+    readOnly(
+      "verification-session",
+      "Create a short-lived marker session for one setup plan and environment.",
+      "implemented",
+    ),
+    readOnly(
+      "verify",
+      "Run static, runtime, transport, and receipt checks without raw payloads.",
+      "implemented",
+    ),
     readOnly("doctor", "Diagnose configuration and connectivity problems."),
     readOnly(
       "manifest",
@@ -102,8 +111,14 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "implemented",
     ),
     readOnly(
+      "prepare_verification",
+      "Create a short-lived marker session for evidence collection.",
+      "implemented",
+    ),
+    readOnly(
       "verify_setup",
       "Verify setup without returning raw analytics payloads.",
+      "implemented",
     ),
     readOnly("doctor", "Return normalized local diagnostics."),
   ],

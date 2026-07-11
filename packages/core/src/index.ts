@@ -25,3 +25,11 @@ export {
   type CreateAiTrackingPlanInput,
   type CreateAiTrackingPlanOptions,
 } from "./tracking-plan.js";
+export {
+  createVerificationSession,
+  verifySetup,
+  type CreateVerificationSessionInput,
+  type CreateVerificationSessionOptions,
+  type VerifySetupInput,
+  type VerifySetupOptions,
+} from "./verify.js";

@@ -11,7 +11,7 @@ import {
   type TrackingPlan,
 } from "@usermaven/wizard-schemas";
 
-const WIZARD_VERSION = "0.8.0";
+const WIZARD_VERSION = "0.9.0";
 const PROMPT_VERSION = "ai-tracking-plan-v1";
 
 function canonicalize(value: unknown): unknown {

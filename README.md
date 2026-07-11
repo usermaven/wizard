@@ -9,7 +9,8 @@ setup works. It is designed for both people and coding agents.
 > machine-readable manifests, bounded project inspection, AI-generated tracking
 > plans, approval-ready setup plans, change previews,
 > approval-bound repository application, and a local MCP server are implemented.
-> End-to-end verification is not implemented yet.
+> Marker-bound static, runtime, transport, and workspace-receipt verification is
+> also implemented.
 
 ## Design promises
 
@@ -96,14 +97,31 @@ Approval requires an interactive terminal. It is bound to the plan digest,
 canonical repository root, exact operation IDs, and an expiry; it is consumed
 once. See the [application playbook](docs/apply-playbook.md).
 
+## Verify the applied setup
+
+```sh
+usermaven-wizard verification-session ./setup-plan.json \
+  --environment staging > verification-session.json
+
+usermaven-wizard verify ./setup-plan.json \
+  --session ./verification-session.json \
+  --evidence ./verification-evidence.json \
+  --root /absolute/path/to/project
+```
+
+Verification independently checks exact local file state and combines
+short-lived marker-bound evidence from browser/E2E observation, collector
+responses, and the selected workspace. See the [verification
+playbook](docs/verification-playbook.md).
+
 ## Run the local MCP server
 
 ```sh
 node packages/cli/dist/mcp.js --root /absolute/path/to/project
 ```
 
-It exposes inspection, tracking-plan, setup-plan, preview, and approval-bound
-application tools over stdio. See the
+It exposes inspection, tracking-plan, setup-plan, preview, approval-bound
+application, and four-layer verification tools over stdio. See the
 [local MCP development playbook](docs/local-mcp.md) for client configuration,
 security boundaries, and troubleshooting.
 

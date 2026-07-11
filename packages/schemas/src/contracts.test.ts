@@ -7,7 +7,9 @@ import {
   projectInspectionSchema,
   relativePath,
   setupPlanSchema,
+  verificationEvidenceSchema,
   verificationResultSchema,
+  verificationSessionSchema,
 } from "./index.js";
 
 const property = (name: string) => ({
@@ -198,6 +200,36 @@ describe("public contracts", () => {
     });
 
     expect(result.success).toBe(false);
+  });
+
+  it("keeps verification evidence normalized and sessions short-lived", () => {
+    expect(
+      verificationEvidenceSchema.safeParse({
+        session_id: "verify_session-1234",
+        runtime: {
+          source: "e2e_test",
+          observed_at: "2026-07-11T10:00:00Z",
+          event_names: ["checkout_completed"],
+          property_names: ["amount"],
+          identified_user: true,
+          identified_company: false,
+          verification_marker_matched: true,
+          raw_payload: { amount: 100 },
+        },
+      }).success,
+    ).toBe(false);
+    expect(
+      verificationSessionSchema.safeParse({
+        schema_version: "1",
+        session_id: "verify_session-1234",
+        plan_id: "plan_12345678",
+        plan_digest: `sha256:${"a".repeat(64)}`,
+        environment: "staging",
+        marker_property: "_usermaven_verification_id",
+        created_at: "2026-07-11T10:00:00Z",
+        expires_at: "2026-07-11T12:00:00Z",
+      }).success,
+    ).toBe(false);
   });
 
   it("keeps agent events strict and versioned", () => {

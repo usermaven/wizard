@@ -71,10 +71,16 @@ agent mode will reserve stdout for NDJSON.
 
 ## Verification result
 
-Verification summarizes checks across four layers: static configuration,
+A verification session binds a random marker, exact setup-plan digest, environment,
+creation time, and expiry of at most one hour. Normalized evidence records its
+source, observation time, event/property names, identity booleans, and marker
+matching. Transport evidence adds only collector host/status; workspace evidence
+adds only the public-key fingerprint.
+
+Verification summarizes checks across four layers: exact static configuration,
 runtime behavior, network transport, and receipt by the selected workspace. It
-may include event and property names but must not include captured values or raw
-payloads.
+may include event and property names but cannot include captured values, request
+bodies, headers, cookies, identities, or raw payloads.
 
 ## Manifest
 

@@ -29,6 +29,8 @@ describe("CLI manifest", () => {
       "generate_setup_plan",
       "preview_changes",
       "apply_changes",
+      "prepare_verification",
+      "verify_setup",
     ]);
   });
 });
