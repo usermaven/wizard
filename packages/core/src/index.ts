@@ -21,6 +21,7 @@ export {
   type GenerateSetupPlanOptions,
 } from "./setup-plan.js";
 export {
-  proposeTrackingPlan,
-  type ProposeTrackingPlanOptions,
+  createAiTrackingPlan,
+  type CreateAiTrackingPlanInput,
+  type CreateAiTrackingPlanOptions,
 } from "./tracking-plan.js";

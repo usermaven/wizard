@@ -1,31 +1,38 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { lstat } from "node:fs/promises";
 import { join } from "node:path";
 
 import {
   setupPlanSchema,
+  trackingPlanSchema,
   workspacePublicConfigSchema,
   type ProjectInspection,
   type SetupOperation,
   type SetupPlan,
+  type TrackingPlan,
   type WorkspacePublicConfig,
 } from "@usermaven/wizard-schemas";
 
 import { inspectProject } from "./inspector.js";
-import { proposeTrackingPlan } from "./tracking-plan.js";
-
-const WIZARD_VERSION = "0.6.0";
+const WIZARD_VERSION = "0.7.0";
 const SDK_VERSION_RANGE = "^1.5.15";
+
+function boundedId(prefix: string, value: string): string {
+  const candidate = `${prefix}${value}`;
+  if (candidate.length <= 128) return candidate;
+  const suffix = createHash("sha256").update(value).digest("hex").slice(0, 12);
+  return `${candidate.slice(0, 115)}-${suffix}`;
+}
 
 export interface GenerateSetupPlanInput {
   projectRoot: string;
   workspace: WorkspacePublicConfig;
+  trackingPlan: TrackingPlan;
 }
 
 export interface GenerateSetupPlanOptions {
   now?: () => Date;
   idFactory?: () => string;
-  trackingPlanIdFactory?: () => string;
 }
 
 function environmentDefaults(
@@ -128,6 +135,15 @@ export async function generateSetupPlan(
   options: GenerateSetupPlanOptions = {},
 ): Promise<SetupPlan> {
   const inspection = await inspectProject(input.projectRoot);
+  const trackingPlan = trackingPlanSchema.parse(input.trackingPlan);
+  if (trackingPlan.proposal?.mode !== "ai_generated") {
+    throw new Error("Setup generation requires an AI-generated tracking plan");
+  }
+  if (trackingPlan.proposal.source.framework !== inspection.project.framework) {
+    throw new Error(
+      "Tracking plan framework does not match the inspected setup project",
+    );
+  }
   const defaults = environmentDefaults(inspection.project.framework);
   const workspace = workspacePublicConfigSchema.parse({
     ...input.workspace,
@@ -171,7 +187,7 @@ export async function generateSetupPlan(
       id: "review-existing-client-file",
       type: "manual_step",
       summary: `Review the existing ${target} file before changing it`,
-      instructions: `The deterministic target already exists and will not be overwritten. Merge a singleton usermavenClient configuration using ${workspace.key_env_var} and ${workspace.tracking_host_env_var}, then rerun planning.`,
+      instructions: `The target already exists and will not be overwritten. Merge a singleton usermavenClient configuration using ${workspace.key_env_var} and ${workspace.tracking_host_env_var}, then rerun planning.`,
       requires_approval: false,
     });
   } else {
@@ -185,31 +201,32 @@ export async function generateSetupPlan(
     });
   }
 
-  operations.push(
-    {
-      id: "configure-public-environment",
+  operations.push({
+    id: "configure-public-environment",
+    type: "manual_step",
+    summary: "Configure the selected workspace public environment values",
+    instructions: `Set ${workspace.key_env_var} to the selected workspace public key and ${workspace.tracking_host_env_var} to ${workspace.tracking_host}. Do not commit populated environment files.`,
+    requires_approval: false,
+  });
+
+  for (const identity of trackingPlan.identity) {
+    operations.push({
+      id: `wire-${identity.kind}-identity-${operations.length + 1}`,
       type: "manual_step",
-      summary: "Configure the selected workspace public environment values",
-      instructions: `Set ${workspace.key_env_var} to the selected workspace public key and ${workspace.tracking_host_env_var} to ${workspace.tracking_host}. Do not commit populated environment files.`,
+      summary: `Wire reviewed ${identity.kind} identity`,
+      instructions: `At the reviewed trigger (${identity.trigger.description}), identify by ${identity.identifier} and include only these approved properties: ${identity.properties.map((item) => item.name).join(", ") || "none"}. Runtime: ${identity.trigger.runtime}.`,
       requires_approval: false,
-    },
-    {
-      id: "wire-page-views",
+    });
+  }
+  for (const event of trackingPlan.events) {
+    operations.push({
+      id: boundedId("wire-event-", event.id),
       type: "manual_step",
-      summary: "Wire reviewed page-view tracking",
-      instructions:
-        "Import the singleton client at the framework's client navigation boundary and call usermaven?.pageview() after the initial load and each completed route change. Exclude query strings and fragments unless explicitly approved.",
+      summary: `Wire reviewed ${event.event_name} event`,
+      instructions: `Track ${event.event_name} when ${event.trigger.description}. Include only these approved properties: ${event.properties.map((item) => item.name).join(", ") || "none"}. Runtime: ${event.trigger.runtime}; authority: ${event.authority}${event.revenue ? "; authoritative revenue confirmation is required" : ""}.`,
       requires_approval: false,
-    },
-    {
-      id: "wire-user-identity",
-      type: "manual_step",
-      summary: "Wire reviewed authenticated user identity",
-      instructions:
-        "When a stable authenticated session becomes available, call usermaven?.id() with the internal user ID and only the approved identity properties. Reset identity on logout.",
-      requires_approval: false,
-    },
-  );
+    });
+  }
 
   const command = buildCommand(inspection.project.package_manager);
   if (command) {
@@ -257,12 +274,7 @@ export async function generateSetupPlan(
     workspace,
     project: inspection.project,
     operations,
-    tracking_plan: proposeTrackingPlan(inspection, {
-      now: () => new Date(createdAt),
-      ...(options.trackingPlanIdFactory
-        ? { idFactory: options.trackingPlanIdFactory }
-        : {}),
-    }),
+    tracking_plan: trackingPlan,
     checks: [
       {
         id: "sdk-present",
@@ -276,18 +288,18 @@ export async function generateSetupPlan(
         description: "Exactly one browser client is initialized",
         required: true,
       },
-      {
-        id: "page-view-runtime",
-        layer: "runtime",
-        description: "Initial and client-navigation page views execute once",
+      ...trackingPlan.identity.map((identity, index) => ({
+        id: `identity-runtime-${index + 1}`,
+        layer: "runtime" as const,
+        description: `Reviewed ${identity.kind} identity executes at its approved trigger`,
         required: true,
-      },
-      {
-        id: "identity-runtime",
-        layer: "runtime",
-        description: "Reviewed identity executes for authenticated users",
+      })),
+      ...trackingPlan.events.map((event) => ({
+        id: boundedId("event-runtime-", event.id),
+        layer: "runtime" as const,
+        description: `${event.event_name} executes once at its approved trigger`,
         required: true,
-      },
+      })),
       {
         id: "collector-accepted",
         layer: "transport",

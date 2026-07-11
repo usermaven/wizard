@@ -51,7 +51,7 @@ export const identityItemSchema = z
     kind: z.enum(["user", "company"]),
     identifier: z.string().min(1).max(128),
     trigger: triggerSchema,
-    properties: z.array(propertyDefinitionSchema),
+    properties: z.array(propertyDefinitionSchema).max(100),
     status: statusSchema,
     proposal: proposalBasisSchema.optional(),
   })
@@ -72,7 +72,7 @@ export const eventCandidateSchema = z
       "reliability",
     ]),
     trigger: triggerSchema,
-    properties: z.array(propertyDefinitionSchema),
+    properties: z.array(propertyDefinitionSchema).max(100),
     pii: piiClassificationSchema,
     authority: z.enum(["client", "server", "either"]),
     deduplication_key: z.string().min(1).max(128).nullable(),
@@ -103,19 +103,139 @@ export const eventCandidateSchema = z
         path: ["authority"],
       });
     }
+    if (event.deduplication_key === null) {
+      context.addIssue({
+        code: "custom",
+        message: "revenue events require a deduplication key",
+        path: ["deduplication_key"],
+      });
+    }
+  });
+
+export const businessContextSchema = z
+  .object({
+    product_name: z.string().min(1).max(256),
+    product_description: z.string().min(20).max(10_000),
+    business_goals: z.array(z.string().min(1).max(1_000)).min(1).max(20),
+    key_user_journeys: z.array(z.string().min(1).max(2_000)).min(1).max(50),
+    revenue: z
+      .object({
+        enabled: z.boolean(),
+        description: z.string().min(1).max(2_000),
+        authoritative_source: z.string().min(1).max(1_000),
+      })
+      .strict()
+      .optional(),
+    data_policy: z.array(z.string().min(1).max(1_000)).max(30).default([]),
+  })
+  .strict();
+
+export const aiTrackingProposalSchema = z
+  .object({
+    identity: z.array(identityItemSchema).max(20),
+    events: z.array(eventCandidateSchema).min(1).max(75),
+    shared_properties: z.array(propertyDefinitionSchema).max(100),
+    assumptions: z.array(z.string().min(1).max(1_000)).max(50),
+    warnings: z.array(z.string().min(1).max(1_000)).max(50),
+    generated_by: z
+      .object({
+        provider: z.string().min(1).max(128),
+        model: z.string().min(1).max(256),
+      })
+      .strict(),
+  })
+  .strict()
+  .superRefine((proposal, context) => {
+    for (const [index, identity] of proposal.identity.entries()) {
+      if (identity.status !== "proposed" || !identity.proposal) {
+        context.addIssue({
+          code: "custom",
+          message:
+            "AI-generated identity items must be proposed with review rationale",
+          path: ["identity", index],
+        });
+      }
+    }
+    for (const [index, event] of proposal.events.entries()) {
+      if (event.status !== "proposed" || !event.proposal) {
+        context.addIssue({
+          code: "custom",
+          message: "AI-generated events must be proposed with review rationale",
+          path: ["events", index],
+        });
+      }
+    }
+    const eventNames = proposal.events.map((event) => event.event_name);
+    if (new Set(eventNames).size !== eventNames.length) {
+      context.addIssue({
+        code: "custom",
+        message: "AI-generated event names must be unique",
+        path: ["events"],
+      });
+    }
+    const eventIds = proposal.events.map((event) => event.id);
+    if (new Set(eventIds).size !== eventIds.length) {
+      context.addIssue({
+        code: "custom",
+        message: "AI-generated event IDs must be unique",
+        path: ["events"],
+      });
+    }
+    const identityKeys = proposal.identity.map(
+      (identity) => `${identity.kind}:${identity.identifier}`,
+    );
+    if (new Set(identityKeys).size !== identityKeys.length) {
+      context.addIssue({
+        code: "custom",
+        message: "AI-generated identity definitions must be unique",
+        path: ["identity"],
+      });
+    }
+    const sharedPropertyNames = proposal.shared_properties.map(
+      (property) => property.name,
+    );
+    if (new Set(sharedPropertyNames).size !== sharedPropertyNames.length) {
+      context.addIssue({
+        code: "custom",
+        message: "AI-generated shared property names must be unique",
+        path: ["shared_properties"],
+      });
+    }
+    for (const [index, event] of proposal.events.entries()) {
+      const names = event.properties.map((property) => property.name);
+      if (new Set(names).size !== names.length) {
+        context.addIssue({
+          code: "custom",
+          message: "AI-generated event property names must be unique",
+          path: ["events", index, "properties"],
+        });
+      }
+    }
   });
 
 export const trackingPlanSchema = z
   .object({
     schema_version: schemaVersion,
     plan_id: z.string().min(8).max(128),
-    identity: z.array(identityItemSchema),
-    events: z.array(eventCandidateSchema),
-    shared_properties: z.array(propertyDefinitionSchema),
+    identity: z.array(identityItemSchema).max(20),
+    events: z.array(eventCandidateSchema).max(100),
+    shared_properties: z.array(propertyDefinitionSchema).max(100),
     proposal: z
       .object({
-        mode: z.literal("deterministic_baseline"),
+        mode: z.enum(["ai_generated", "deterministic_baseline"]),
         review_required: z.literal(true),
+        generated_by: z
+          .object({
+            provider: z.string().min(1).max(128),
+            model: z.string().min(1).max(256),
+            prompt_version: z.string().min(1).max(64),
+          })
+          .strict()
+          .optional(),
+        business_context_digest: z
+          .string()
+          .regex(/^sha256:[a-f0-9]{64}$/u)
+          .optional(),
         assumptions: z.array(z.string().min(1).max(1_000)).max(50),
         warnings: z.array(z.string().min(1).max(1_000)).max(50),
         source: z
@@ -127,6 +247,18 @@ export const trackingPlanSchema = z
           .strict(),
       })
       .strict()
+      .superRefine((proposal, context) => {
+        if (
+          proposal.mode === "ai_generated" &&
+          (!proposal.generated_by || !proposal.business_context_digest)
+        ) {
+          context.addIssue({
+            code: "custom",
+            message:
+              "AI-generated plans require model provenance and a business-context digest",
+          });
+        }
+      })
       .optional(),
     created_at: isoDateTime,
     wizard_version: z.string().min(1).max(64),
@@ -136,4 +268,6 @@ export const trackingPlanSchema = z
 export type PropertyDefinition = z.infer<typeof propertyDefinitionSchema>;
 export type ProposalBasis = z.infer<typeof proposalBasisSchema>;
 export type EventCandidate = z.infer<typeof eventCandidateSchema>;
+export type BusinessContext = z.infer<typeof businessContextSchema>;
+export type AiTrackingProposal = z.infer<typeof aiTrackingProposalSchema>;
 export type TrackingPlan = z.infer<typeof trackingPlanSchema>;

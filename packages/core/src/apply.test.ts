@@ -11,7 +11,11 @@ import {
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-import { setupPlanSchema, type SetupPlan } from "@usermaven/wizard-schemas";
+import {
+  setupPlanSchema,
+  trackingPlanSchema,
+  type SetupPlan,
+} from "@usermaven/wizard-schemas";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { applyChanges, type CommandSpec } from "./apply.js";
@@ -30,6 +34,53 @@ const workspace = {
   public_key_fingerprint: "sha256:abcdef1234567890",
   tracking_host: "https://events.example.com",
 };
+const trackingPlan = trackingPlanSchema.parse({
+  schema_version: "1",
+  plan_id: "plan_apply-ai-1234",
+  identity: [],
+  events: [
+    {
+      id: "link-created",
+      event_name: "link_created",
+      description: "A link was created",
+      business_question: "Do users activate?",
+      category: "activation",
+      trigger: { description: "After API confirmation", runtime: "server" },
+      properties: [],
+      pii: "none",
+      authority: "server",
+      deduplication_key: "link_id",
+      owner: null,
+      status: "proposed",
+      revenue: false,
+      proposal: {
+        confidence: 0.8,
+        rationale: ["Core activation journey"],
+        review_required: true,
+      },
+    },
+  ],
+  shared_properties: [],
+  proposal: {
+    mode: "ai_generated",
+    review_required: true,
+    generated_by: {
+      provider: "test",
+      model: "test-model",
+      prompt_version: "ai-tracking-plan-v1",
+    },
+    business_context_digest: `sha256:${"a".repeat(64)}`,
+    assumptions: [],
+    warnings: [],
+    source: {
+      framework: "node",
+      inspected_at: "2026-07-11T12:00:00Z",
+      inspection_truncated: false,
+    },
+  },
+  created_at: "2026-07-11T13:00:00Z",
+  wizard_version: "0.7.0",
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -50,11 +101,10 @@ async function project(): Promise<string> {
 
 async function generatedPlan(root: string): Promise<SetupPlan> {
   return generateSetupPlan(
-    { projectRoot: root, workspace },
+    { projectRoot: root, workspace, trackingPlan },
     {
       now: fixedNow,
       idFactory: () => "apply-plan-1234",
-      trackingPlanIdFactory: () => "tracking-plan-1234",
     },
   );
 }

@@ -6,14 +6,16 @@ import { createInterface } from "node:readline/promises";
 import {
   applyChanges,
   approvalConfirmation,
+  createAiTrackingPlan,
   createChangeApproval,
   digestSetupPlan,
   generateSetupPlan,
   inspectProject,
   previewChanges,
-  proposeTrackingPlan,
 } from "@usermaven/wizard-core";
 import {
+  aiTrackingProposalSchema,
+  businessContextSchema,
   changeApprovalSchema,
   setupPlanSchema,
 } from "@usermaven/wizard-schemas";
@@ -24,9 +26,11 @@ const help = `Usermaven Wizard
 
 Usage:
   usermaven-wizard inspect [path] [--compact]
-  usermaven-wizard plan [path] [--compact]
+  usermaven-wizard plan [path] --business-context <context.json>
+    --ai-proposal <proposal.json> [--compact]
   usermaven-wizard setup-plan [path] --workspace-name <name> --region <region>
     --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>
+    --tracking-plan <tracking-plan.json>
     [--key-env-var <name>] [--tracking-host-env-var <name>] [--compact]
   usermaven-wizard preview <setup-plan.json> [--compact]
   usermaven-wizard approve <setup-plan.json> --operations <id,id> [--root <path>]
@@ -94,12 +98,15 @@ async function main(): Promise<void> {
           "--tracking-host",
           "--key-env-var",
           "--tracking-host-env-var",
+          "--tracking-plan",
         ]
-      : command === "approve"
-        ? ["--root", "--operations", "--ttl-minutes", "--output"]
-        : command === "apply"
-          ? ["--root", "--approval"]
-          : [];
+      : command === "plan"
+        ? ["--business-context", "--ai-proposal"]
+        : command === "approve"
+          ? ["--root", "--operations", "--ttl-minutes", "--output"]
+          : command === "apply"
+            ? ["--root", "--approval"]
+            : [];
   const parsed = parseArguments(flags, allowedOptions);
   const spacing = parsed.compact ? undefined : 2;
 
@@ -122,7 +129,23 @@ async function main(): Promise<void> {
     const inspection = await inspectProject(
       parsed.positionals[0] ?? process.cwd(),
     );
-    const result = proposeTrackingPlan(inspection);
+    const businessContext = businessContextSchema.parse(
+      await readJson(
+        requiredOption(parsed.options, "--business-context"),
+        1_000_000,
+      ),
+    );
+    const aiProposal = aiTrackingProposalSchema.parse(
+      await readJson(
+        requiredOption(parsed.options, "--ai-proposal"),
+        5_000_000,
+      ),
+    );
+    const result = createAiTrackingPlan({
+      inspection,
+      businessContext,
+      aiProposal,
+    });
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
@@ -133,6 +156,12 @@ async function main(): Promise<void> {
     const trackingHostEnvVar = parsed.options.get("--tracking-host-env-var");
     const result = await generateSetupPlan({
       projectRoot: parsed.positionals[0] ?? process.cwd(),
+      trackingPlan: setupPlanSchema.shape.tracking_plan.parse(
+        await readJson(
+          requiredOption(parsed.options, "--tracking-plan"),
+          5_000_000,
+        ),
+      ),
       workspace: {
         display_name: requiredOption(parsed.options, "--workspace-name"),
         region: requiredOption(parsed.options, "--region"),

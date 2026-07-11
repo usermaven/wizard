@@ -16,15 +16,17 @@ snippets and matched values are not part of the contract.
 
 A tracking plan records identity points, event candidates, shared properties,
 runtime triggers, ownership, PII classification, and implementation status.
-Proposed items may include confidence, rationale, and a mandatory-review marker.
-Deterministic plans also record their assumptions, warnings, source inspection,
-and generation mode.
+AI-generated items must include confidence, rationale, proposed status, and a
+mandatory-review marker. The final plan records model provider/name, prompt
+contract version, assumptions, warnings, normalized source inspection, and a
+digest of the business context without retaining that context.
 Revenue events require `amount`, `currency`, and `transaction_id` properties and
 cannot use a client-only authority. These requirements make revenue segmentation
 and deduplication explicit before code changes are generated.
 
-Baseline mode does not infer custom or revenue events. Those require an explicit
-business-instrumentation review and an authoritative revenue confirmation path.
+The agent may propose custom business events. Revenue proposals additionally
+require an explicitly enabled revenue context and an authoritative confirmation
+path; they can never be client-only.
 
 ## Setup plan
 

@@ -33,7 +33,7 @@ const mutating = (
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.6.0",
+  version: "0.7.0",
   node: ">=20",
   commands: [
     readOnly(
@@ -43,7 +43,7 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
     ),
     readOnly(
       "plan",
-      "Generate a deterministic baseline tracking plan without changing files.",
+      "Validate and stamp an AI-generated tracking plan without changing files.",
       "implemented",
     ),
     readOnly(

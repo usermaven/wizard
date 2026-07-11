@@ -1,0 +1,9 @@
+{
+  "product_name": "Example SaaS",
+  "product_description": "A collaborative link management product for marketing teams.",
+  "business_goals": ["Increase first-week activation"],
+  "key_user_journeys": [
+    "A new user creates a branded link and invites a teammate"
+  ],
+  "data_policy": ["Do not capture destination URLs or free-form text"]
+}

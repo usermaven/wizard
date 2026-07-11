@@ -1,0 +1,63 @@
+{
+  "identity": [
+    {
+      "kind": "user",
+      "identifier": "user_id",
+      "trigger": {
+        "description": "When a stable authenticated session becomes available",
+        "runtime": "client"
+      },
+      "properties": [],
+      "status": "proposed",
+      "proposal": {
+        "confidence": 0.8,
+        "rationale": [
+          "Activation must be attributed to a stable signed-in user"
+        ],
+        "review_required": true
+      }
+    }
+  ],
+  "events": [
+    {
+      "id": "link-created",
+      "event_name": "link_created",
+      "description": "A user successfully created a branded link",
+      "business_question": "How many new users reach their first value moment?",
+      "category": "activation",
+      "trigger": {
+        "description": "After the API confirms link creation",
+        "runtime": "server"
+      },
+      "properties": [
+        {
+          "name": "workspace_id",
+          "description": "Stable workspace identifier",
+          "data_type": "string",
+          "required": true,
+          "pii": "none"
+        }
+      ],
+      "pii": "none",
+      "authority": "server",
+      "deduplication_key": "link_id",
+      "owner": "growth",
+      "status": "proposed",
+      "revenue": false,
+      "proposal": {
+        "confidence": 0.85,
+        "rationale": [
+          "The stated journey identifies link creation as activation"
+        ],
+        "review_required": true
+      }
+    }
+  ],
+  "shared_properties": [],
+  "assumptions": ["API confirmation represents successful creation"],
+  "warnings": ["Confirm the canonical workspace identifier"],
+  "generated_by": {
+    "provider": "mcp-client",
+    "model": "replace-with-host-model"
+  }
+}

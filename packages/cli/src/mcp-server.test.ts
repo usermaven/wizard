@@ -25,6 +25,43 @@ import { describe, expect, it } from "vitest";
 import { createWizardMcpServer, resolveProjectPath } from "./mcp-server.js";
 
 const fixtures = fileURLToPath(new URL("../../../fixtures/", import.meta.url));
+const businessContext = {
+  product_name: "Example SaaS",
+  product_description:
+    "A collaborative link management product for marketing teams.",
+  business_goals: ["Improve activation"],
+  key_user_journeys: ["A new user creates their first branded link"],
+  data_policy: ["Do not capture destination URLs"],
+};
+const aiProposal = {
+  identity: [],
+  events: [
+    {
+      id: "link-created",
+      event_name: "link_created",
+      description: "A user created a link",
+      business_question: "How many users activate?",
+      category: "activation",
+      trigger: { description: "After API confirmation", runtime: "server" },
+      properties: [],
+      pii: "none",
+      authority: "server",
+      deduplication_key: "link_id",
+      owner: "growth",
+      status: "proposed",
+      revenue: false,
+      proposal: {
+        confidence: 0.85,
+        rationale: ["Link creation is the stated activation journey"],
+        review_required: true,
+      },
+    },
+  ],
+  shared_properties: [],
+  assumptions: [],
+  warnings: [],
+  generated_by: { provider: "mcp-client", model: "test-model" },
+};
 
 async function connectedServer(root: string) {
   const server = await createWizardMcpServer({ root });
@@ -34,6 +71,19 @@ async function connectedServer(root: string) {
   await server.connect(serverTransport);
   await client.connect(clientTransport);
   return { client, server };
+}
+
+async function generatedTrackingPlan(client: Client, projectPath?: string) {
+  const result = await client.callTool({
+    name: "propose_tracking_plan",
+    arguments: {
+      ...(projectPath ? { project_path: projectPath } : {}),
+      business_context: businessContext,
+      ai_proposal: aiProposal,
+    },
+  });
+  expect(result.isError).not.toBe(true);
+  return trackingPlanSchema.parse(result.structuredContent);
 }
 
 describe("local MCP server", () => {
@@ -94,19 +144,15 @@ describe("local MCP server", () => {
     }
   });
 
-  it("returns a review-required baseline plan", async () => {
+  it("validates a review-required AI-generated custom plan", async () => {
     const { client, server } = await connectedServer(fixtures);
     try {
-      const result = await client.callTool({
-        name: "propose_tracking_plan",
-        arguments: { project_path: "next-app-router" },
-      });
-      const plan = trackingPlanSchema.parse(result.structuredContent);
+      const plan = await generatedTrackingPlan(client, "next-app-router");
 
-      expect(result.isError).not.toBe(true);
       expect(plan.events.map((event) => event.event_name)).toEqual([
-        "pageview",
+        "link_created",
       ]);
+      expect(plan.proposal?.mode).toBe("ai_generated");
       expect(plan.proposal?.review_required).toBe(true);
       expect(plan.events.every((event) => event.revenue === false)).toBe(true);
     } finally {
@@ -134,6 +180,7 @@ describe("local MCP server", () => {
   it("generates and previews an approval-ready setup plan", async () => {
     const { client, server } = await connectedServer(fixtures);
     try {
+      const trackingPlan = await generatedTrackingPlan(client, "react-vite");
       const generated = await client.callTool({
         name: "generate_setup_plan",
         arguments: {
@@ -144,6 +191,7 @@ describe("local MCP server", () => {
             public_key_fingerprint: "sha256:abcdef1234567890",
             tracking_host: "https://events.example.com",
           },
+          tracking_plan: trackingPlan,
         },
       });
       const plan = setupPlanSchema.parse(generated.structuredContent);
@@ -180,6 +228,7 @@ describe("local MCP server", () => {
   it("rejects raw workspace keys at the protocol boundary", async () => {
     const { client, server } = await connectedServer(fixtures);
     try {
+      const trackingPlan = await generatedTrackingPlan(client, "react-vite");
       const result = await client.callTool({
         name: "generate_setup_plan",
         arguments: {
@@ -191,6 +240,7 @@ describe("local MCP server", () => {
             tracking_host: "https://events.example.com",
             key: "actual-workspace-key",
           },
+          tracking_plan: trackingPlan,
         },
       });
 
@@ -211,6 +261,7 @@ describe("local MCP server", () => {
     );
     const { client, server } = await connectedServer(root);
     try {
+      const trackingPlan = await generatedTrackingPlan(client);
       const generated = await client.callTool({
         name: "generate_setup_plan",
         arguments: {
@@ -220,6 +271,7 @@ describe("local MCP server", () => {
             public_key_fingerprint: "sha256:abcdef1234567890",
             tracking_host: "https://events.example.com",
           },
+          tracking_plan: trackingPlan,
         },
       });
       const plan = setupPlanSchema.parse(generated.structuredContent);

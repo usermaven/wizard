@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { setupPlanSchema } from "@usermaven/wizard-schemas";
+import { setupPlanSchema, trackingPlanSchema } from "@usermaven/wizard-schemas";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { previewChanges } from "./change-preview.js";
@@ -15,7 +15,6 @@ const now = () => new Date("2026-07-11T14:00:00Z");
 const options = {
   now,
   idFactory: () => "setup-test-1234",
-  trackingPlanIdFactory: () => "tracking-test-1234",
 };
 const workspace = {
   display_name: "Example workspace",
@@ -23,6 +22,66 @@ const workspace = {
   public_key_fingerprint: "sha256:abcdef1234567890",
   tracking_host: "https://events.example.com",
 };
+const trackingPlan = trackingPlanSchema.parse({
+  schema_version: "1",
+  plan_id: "plan_ai-test-1234",
+  identity: [
+    {
+      kind: "user",
+      identifier: "user_id",
+      trigger: { description: "After authentication", runtime: "client" },
+      properties: [],
+      status: "proposed",
+      proposal: {
+        confidence: 0.8,
+        rationale: ["Measure signed-in activation"],
+        review_required: true,
+      },
+    },
+  ],
+  events: [
+    {
+      id: "link-created",
+      event_name: "link_created",
+      description: "A link was created",
+      business_question: "Do users activate?",
+      category: "activation",
+      trigger: { description: "After API confirmation", runtime: "server" },
+      properties: [],
+      pii: "none",
+      authority: "server",
+      deduplication_key: "link_id",
+      owner: "growth",
+      status: "proposed",
+      revenue: false,
+      proposal: {
+        confidence: 0.8,
+        rationale: ["Core activation journey"],
+        review_required: true,
+      },
+    },
+  ],
+  shared_properties: [],
+  proposal: {
+    mode: "ai_generated",
+    review_required: true,
+    generated_by: {
+      provider: "test",
+      model: "test-model",
+      prompt_version: "ai-tracking-plan-v1",
+    },
+    business_context_digest: `sha256:${"a".repeat(64)}`,
+    assumptions: [],
+    warnings: [],
+    source: {
+      framework: "react-vite",
+      inspected_at: "2026-07-11T12:00:00Z",
+      inspection_truncated: false,
+    },
+  },
+  created_at: "2026-07-11T13:00:00Z",
+  wizard_version: "0.7.0",
+});
 
 afterEach(async () => {
   await Promise.all(
@@ -33,7 +92,7 @@ afterEach(async () => {
 describe("generateSetupPlan", () => {
   it("generates an approval-ready React/Vite plan without a key value", async () => {
     const plan = await generateSetupPlan(
-      { projectRoot: join(fixtures, "react-vite"), workspace },
+      { projectRoot: join(fixtures, "react-vite"), workspace, trackingPlan },
       options,
     );
 
@@ -62,8 +121,22 @@ describe("generateSetupPlan", () => {
   });
 
   it("uses Next.js public environment names and an App Router target", async () => {
+    const nextTrackingPlan = trackingPlanSchema.parse({
+      ...trackingPlan,
+      proposal: {
+        ...trackingPlan.proposal,
+        source: {
+          ...trackingPlan.proposal!.source,
+          framework: "next-app-router",
+        },
+      },
+    });
     const plan = await generateSetupPlan(
-      { projectRoot: join(fixtures, "next-app-router"), workspace },
+      {
+        projectRoot: join(fixtures, "next-app-router"),
+        workspace,
+        trackingPlan: nextTrackingPlan,
+      },
       options,
     );
     const create = plan.operations.find(
@@ -77,7 +150,7 @@ describe("generateSetupPlan", () => {
     );
   });
 
-  it("never overwrites an existing deterministic target", async () => {
+  it("never overwrites an existing target", async () => {
     const root = await mkdtemp(join(tmpdir(), "wizard-setup-"));
     temporaryRoots.push(root);
     await mkdir(join(root, "src"));
@@ -91,7 +164,7 @@ describe("generateSetupPlan", () => {
     );
 
     const plan = await generateSetupPlan(
-      { projectRoot: root, workspace },
+      { projectRoot: root, workspace, trackingPlan },
       options,
     );
 
@@ -114,6 +187,7 @@ describe("generateSetupPlan", () => {
       generateSetupPlan(
         {
           projectRoot: join(fixtures, "react-vite"),
+          trackingPlan,
           workspace: {
             ...workspace,
             key: "actual-workspace-key",
@@ -129,6 +203,7 @@ describe("generateSetupPlan", () => {
       generateSetupPlan(
         {
           projectRoot: join(fixtures, "react-vite"),
+          trackingPlan,
           workspace: {
             ...workspace,
             tracking_host: "http://events.example.com",
@@ -138,12 +213,35 @@ describe("generateSetupPlan", () => {
       ),
     ).rejects.toThrow("tracking_host must use HTTPS");
   });
+
+  it("rejects legacy deterministic plans for new setup generation", async () => {
+    const legacy = trackingPlanSchema.parse({
+      ...trackingPlan,
+      proposal: {
+        ...trackingPlan.proposal,
+        mode: "deterministic_baseline",
+        generated_by: undefined,
+        business_context_digest: undefined,
+      },
+    });
+
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: join(fixtures, "react-vite"),
+          workspace,
+          trackingPlan: legacy,
+        },
+        options,
+      ),
+    ).rejects.toThrow("requires an AI-generated tracking plan");
+  });
 });
 
 describe("previewChanges", () => {
   it("renders every operation without executing it", async () => {
     const plan = await generateSetupPlan(
-      { projectRoot: join(fixtures, "react-vite"), workspace },
+      { projectRoot: join(fixtures, "react-vite"), workspace, trackingPlan },
       options,
     );
     const preview = previewChanges(plan);

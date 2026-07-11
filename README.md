@@ -6,8 +6,8 @@ setup works. It is designed for both people and coding agents.
 
 > [!IMPORTANT]
 > This repository is under active development. Versioned contracts,
-> machine-readable manifests, bounded project inspection, and deterministic
-> baseline tracking plans, approval-ready setup plans, change previews,
+> machine-readable manifests, bounded project inspection, AI-generated tracking
+> plans, approval-ready setup plans, change previews,
 > approval-bound repository application, and a local MCP server are implemented.
 > End-to-end verification is not implemented yet.
 
@@ -43,15 +43,21 @@ dependencies, and recognized instrumentation calls. Its JSON output contains
 normalized tokens and locations—not source snippets, property values, secrets,
 or event bodies.
 
-## Propose a baseline tracking plan
+## Generate an AI tracking plan
 
 ```sh
-npx @usermaven/wizard plan .
+npx @usermaven/wizard plan . \
+  --business-context ./business-context.json \
+  --ai-proposal ./ai-proposal.json > tracking-plan.json
 ```
 
-Baseline mode proposes page views, stable user identity, and shared deployment
-properties. Every item requires review. It deliberately does not invent custom
-business or revenue events from source-code keywords.
+In the MCP workflow, the client model creates the proposal from explicit
+business context, normalized inspection, and any source access separately
+authorized in the coding-agent host; the wizard validates and stamps it. It can
+propose custom events and properties. Every AI item requires review;
+revenue events additionally require explicit revenue context, standard revenue
+properties, and server-capable authority. See the [AI planning
+playbook](docs/ai-tracking-plans.md).
 
 ## Generate and preview setup operations
 
@@ -60,7 +66,8 @@ usermaven-wizard setup-plan . \
   --workspace-name "Example" \
   --region us \
   --key-fingerprint sha256:example \
-  --tracking-host https://events.example.com
+  --tracking-host https://events.example.com \
+  --tracking-plan ./tracking-plan.json
 
 usermaven-wizard preview ./setup-plan.json
 ```
@@ -107,7 +114,6 @@ npm run check
 npm run --workspace @usermaven/wizard build
 node packages/cli/dist/cli.js manifest
 node packages/cli/dist/cli.js inspect fixtures/react-vite
-node packages/cli/dist/cli.js plan fixtures/react-vite
 ```
 
 Start with [the architecture](docs/architecture.md),
