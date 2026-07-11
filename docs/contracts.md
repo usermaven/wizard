@@ -4,6 +4,14 @@ All contracts use `schema_version: "1"`, strict object validation, bounded
 strings, and ISO 8601 timestamps with an explicit offset. The source of truth is
 `@usermaven/wizard-schemas`.
 
+## Project inspection
+
+An inspection result records the detected framework and package manager,
+normalized detection evidence, known analytics dependencies, recognized
+instrumentation tokens, and scan-limit statistics. Occurrences contain provider,
+kind, repository-relative path, line number, and a fixed token label. Source
+snippets and matched values are not part of the contract.
+
 ## Tracking plan
 
 A tracking plan records identity points, event candidates, shared properties,

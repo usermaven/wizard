@@ -25,8 +25,10 @@ installation sessions.
 
 ## Execution phases
 
-1. `inspect` detects the framework, package manager, SDKs, identity calls, and
-   candidate business events. Its output is normalized project facts.
+1. `inspect` detects the framework, package manager, analytics SDKs, and known
+   instrumentation calls. It scans an allowlisted set of source extensions,
+   skips symlinks and generated/dependency directories, enforces file and byte
+   limits, and returns normalized project facts without source snippets.
 2. `plan` produces versioned tracking and setup plans. It makes no changes.
 3. `preview` renders each proposed operation and diff.
 4. `apply` accepts an approval identifier and an exact operation set. It rejects

@@ -1,19 +1,16 @@
 {
-  "name": "@usermaven/wizard",
+  "name": "@usermaven/wizard-core",
   "version": "0.2.0",
-  "description": "Local-first Usermaven installation, instrumentation, and verification CLI.",
+  "description": "Local inspection and planning engine for Usermaven Wizard.",
   "license": "MIT",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/usermaven/wizard.git",
-    "directory": "packages/cli"
+    "directory": "packages/core"
   },
   "bugs": "https://github.com/usermaven/wizard/issues",
   "homepage": "https://github.com/usermaven/wizard#readme",
   "type": "module",
-  "bin": {
-    "usermaven-wizard": "./dist/cli.js"
-  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {
@@ -26,11 +23,10 @@
     "dist"
   ],
   "scripts": {
-    "build": "tsup src/index.ts src/cli.ts --format esm --dts --clean",
+    "build": "tsup src/index.ts --format esm --dts --clean",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@usermaven/wizard-core": "0.2.0",
     "@usermaven/wizard-schemas": "0.2.0"
   },
   "publishConfig": {

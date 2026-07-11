@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   agentEventSchema,
   eventCandidateSchema,
+  projectInspectionSchema,
   relativePath,
   setupPlanSchema,
   verificationResultSchema,
@@ -181,5 +182,41 @@ describe("public contracts", () => {
     expect(
       agentEventSchema.safeParse({ ...valid, shell: "npm install" }).success,
     ).toBe(false);
+  });
+
+  it("keeps project inspection normalized and rejects source snippets", () => {
+    const occurrence: Record<string, unknown> = {
+      provider: "usermaven",
+      kind: "track",
+      path: "src/analytics.ts",
+      line: 4,
+      matched_token: "usermaven.track",
+      source: "usermaven.track('checkout', { email })",
+    };
+    const inspection = {
+      schema_version: "1",
+      project: {
+        framework: "react-vite",
+        package_manager: "npm",
+        confidence: 1,
+      },
+      evidence: [{ kind: "dependency", path: "package.json", detail: "vite" }],
+      analytics_dependencies: [],
+      instrumentation: [occurrence],
+      scan: {
+        files_considered: 1,
+        files_scanned: 1,
+        bytes_scanned: 100,
+        truncated: false,
+        skipped_symlinks: 0,
+      },
+      warnings: [],
+      inspected_at: "2026-07-11T10:00:00Z",
+      wizard_version: "0.2.0",
+    };
+
+    expect(projectInspectionSchema.safeParse(inspection).success).toBe(false);
+    delete occurrence.source;
+    expect(projectInspectionSchema.safeParse(inspection).success).toBe(true);
   });
 });

@@ -22,7 +22,7 @@ const mutating = (name: string, description: string) => ({
 export const manifest: WizardManifest = wizardManifestSchema.parse({
   schema_version: "1",
   product: "@usermaven/wizard",
-  version: "0.1.0",
+  version: "0.2.0",
   node: ">=20",
   commands: [
     readOnly(

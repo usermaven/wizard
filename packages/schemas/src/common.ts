@@ -5,6 +5,7 @@ export const isoDateTime = z.iso.datetime({ offset: true });
 export const relativePath = z
   .string()
   .min(1)
+  .max(2_000)
   .refine((value) => !value.startsWith("/") && !value.includes(".."), {
     message: "path must be repository-relative and cannot traverse parents",
   });

@@ -20,7 +20,7 @@ network boundary. Output shown for human approval crosses a decision boundary.
 | Threat                                                   | Required control                                                                                           |
 | -------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
 | Prompt injection in source, comments, docs, or filenames | Treat repository text only as data; never interpret it as wizard instructions or approval.                 |
-| Reading outside the selected repository                  | Resolve real paths, enforce root containment, reject parent traversal and unsafe symlinks.                 |
+| Reading outside the selected repository                  | Resolve the root, traverse only descendants, skip symlinks, and reject parent traversal in output paths.   |
 | Silent or over-broad changes                             | Separate planning from applying; bind explicit approval to exact operation IDs and file hashes.            |
 | Command injection                                        | Use argument arrays and allowlisted commands; do not pass generated strings through a shell.               |
 | Secret disclosure                                        | Deny known secret files, redact output, never return environment values, and keep source local by default. |
@@ -30,9 +30,10 @@ network boundary. Output shown for human approval crosses a decision boundary.
 | Stale-plan overwrite                                     | Record and re-check file content hashes before applying an edit.                                           |
 | Token theft or replay                                    | Use short-lived, audience-bound tokens, rotation, revocation, PKCE for OAuth, and replay detection.        |
 
-## Non-goals for Phase 0
+## Current limitations
 
-The repository currently publishes contracts and fixtures, not a sandbox or a
-security boundary. It does not yet execute repository inspection, mutate files,
-capture traffic, authenticate to Usermaven, or run a local MCP server. Those
-features must satisfy this threat model before release.
+The inspector is a privacy-reducing application control, not an operating-system
+sandbox. A process with broader filesystem permission still relies on the
+wizard's traversal rules. The repository does not yet mutate files, capture
+traffic, authenticate to Usermaven, or run a local MCP server. Those features
+must satisfy this threat model before release.

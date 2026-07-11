@@ -5,9 +5,10 @@ tracking plan, applying approved instrumentation changes, and verifying that the
 setup works. It is designed for both people and coding agents.
 
 > [!IMPORTANT]
-> This repository is currently a Phase 0 contract preview. The schemas and
-> machine-readable manifest are usable; project inspection, mutation, local MCP,
-> and end-to-end verification are not implemented yet.
+> This repository is under active development. Versioned contracts,
+> machine-readable manifests, and bounded read-only project inspection are
+> implemented. Repository mutation, local MCP, and end-to-end verification are
+> not implemented yet.
 
 ## Design promises
 
@@ -23,9 +24,22 @@ setup works. It is designed for both people and coding agents.
 ## Packages
 
 - `@usermaven/wizard-schemas`: versioned Zod contracts for tracking plans, setup
-  plans, verification results, agent NDJSON events, and the command manifest.
-- `@usermaven/wizard`: the future CLI and local MCP server. In Phase 0, only
-  `usermaven-wizard manifest` is executable.
+  plans, project inspections, verification results, agent NDJSON events, and the
+  command manifest.
+- `@usermaven/wizard-core`: reusable local inspection and planning engine.
+- `@usermaven/wizard`: the CLI and future local MCP server. `inspect` and
+  `manifest` are currently executable.
+
+## Inspect a project
+
+```sh
+npx @usermaven/wizard inspect .
+```
+
+Inspection detects supported frameworks, the package manager, analytics SDK
+dependencies, and recognized instrumentation calls. Its JSON output contains
+normalized tokens and locations—not source snippets, property values, secrets,
+or event bodies.
 
 ## Development
 
@@ -36,6 +50,7 @@ npm install
 npm run check
 npm run --workspace @usermaven/wizard build
 node packages/cli/dist/cli.js manifest
+node packages/cli/dist/cli.js inspect fixtures/react-vite
 ```
 
 Start with [the architecture](docs/architecture.md),

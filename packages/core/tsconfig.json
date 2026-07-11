@@ -3,7 +3,6 @@
   "compilerOptions": {
     "types": ["node"],
     "paths": {
-      "@usermaven/wizard-core": ["../core/src/index.ts"],
       "@usermaven/wizard-schemas": ["../schemas/src/index.ts"]
     }
   },
