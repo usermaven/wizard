@@ -65,6 +65,7 @@ import {
 import {
   DEFAULT_API_URL,
   WorkspaceApiClient,
+  type DeviceAuthorization,
   type WorkspaceSummary,
 } from "./workspace-api.js";
 import { STARTER_DASHBOARD_NAME, starterTrends } from "./starter-dashboard.js";
@@ -107,7 +108,7 @@ Usage:
     [--root <path>] [--output <report.md>]
   usermaven-wizard doctor [path] [--tracking-host <https-url>] [--compact]
   usermaven-wizard uninstall [path] [--compact]
-  usermaven-wizard login [--api-url <https-url>] [--api-key <key>]
+  usermaven-wizard login [--api-url <https-url>] [--api-key <key>] [--password]
   usermaven-wizard logout
   usermaven-wizard whoami [--compact]
   usermaven-wizard workspaces [--compact]
@@ -272,7 +273,13 @@ async function main(): Promise<void> {
                                     ? ["--workspace", "--name"]
                                     : [];
   const allowedBooleans =
-    command === "plan" ? ["--baseline"] : command === "setup" ? ["--json"] : [];
+    command === "plan"
+      ? ["--baseline"]
+      : command === "setup"
+        ? ["--json"]
+        : command === "login"
+          ? ["--password"]
+          : [];
   const parsed = parseArguments(flags, allowedOptions, allowedBooleans);
   const spacing = parsed.compact ? undefined : 2;
 
@@ -673,26 +680,38 @@ async function main(): Promise<void> {
           "Login requires an interactive terminal; use --api-key for automation",
         );
       }
-      const email = (await questionVisible("Usermaven email: ")).trim();
-      const password = await questionHidden("Password: ");
-      let result = await client.login(email, password);
-      if (result.status === "requires_2fa") {
-        const code = (
-          await questionVisible("Two-factor authentication code: ")
-        ).trim();
-        result = await client.loginTwoFactor(result.sessionToken, code);
+      const device = parsed.booleans.has("--password")
+        ? null
+        : await client.startDeviceAuthorization("Usermaven Wizard");
+      if (device) {
+        credentials = await completeDeviceLogin(client, baseUrl, device);
+      } else {
+        if (!parsed.booleans.has("--password")) {
+          process.stdout.write(
+            "This Usermaven API does not support device sign-in yet; using email and password.\n",
+          );
+        }
+        const email = (await questionVisible("Usermaven email: ")).trim();
+        const password = await questionHidden("Password: ");
+        let result = await client.login(email, password);
+        if (result.status === "requires_2fa") {
+          const code = (
+            await questionVisible("Two-factor authentication code: ")
+          ).trim();
+          result = await client.loginTwoFactor(result.sessionToken, code);
+        }
+        credentials = {
+          base_url: baseUrl,
+          email,
+          auth: {
+            kind: "bearer",
+            access_token: result.accessToken,
+            ...(result.refreshToken
+              ? { refresh_token: result.refreshToken }
+              : {}),
+          },
+        };
       }
-      credentials = {
-        base_url: baseUrl,
-        email,
-        auth: {
-          kind: "bearer",
-          access_token: result.accessToken,
-          ...(result.refreshToken
-            ? { refresh_token: result.refreshToken }
-            : {}),
-        },
-      };
     }
     const workspaces = await client.listWorkspaces(toApiAuth(credentials));
     const path = await saveCredentials(credentials);
@@ -825,6 +844,40 @@ function selectWorkspace(
   );
   if (!match) throw new Error(`No workspace matches "${selector}"`);
   return match;
+}
+
+async function completeDeviceLogin(
+  client: WorkspaceApiClient,
+  baseUrl: string,
+  device: DeviceAuthorization,
+): Promise<StoredCredentials> {
+  process.stdout.write(
+    `\nTo sign in, open:\n\n  ${device.verificationUriComplete}\n\n` +
+      `and confirm this code: ${device.userCode}\n\nWaiting for approval…\n`,
+  );
+  const deadline = Date.now() + device.expiresInSeconds * 1_000;
+  const intervalMs = Math.max(device.intervalSeconds, 1) * 1_000;
+  while (Date.now() < deadline) {
+    await new Promise((resolvePromise) =>
+      setTimeout(resolvePromise, intervalMs),
+    );
+    const result = await client.pollDeviceToken(device.deviceCode);
+    if (result.status === "pending") continue;
+    if (result.status === "denied")
+      throw new Error("The sign-in request was denied in the browser");
+    if (result.status === "expired")
+      throw new Error("The sign-in code expired; run login again");
+    return {
+      base_url: baseUrl,
+      ...(result.email ? { email: result.email } : {}),
+      auth: {
+        kind: "bearer",
+        access_token: result.accessToken,
+        ...(result.refreshToken ? { refresh_token: result.refreshToken } : {}),
+      },
+    };
+  }
+  throw new Error("The sign-in code expired; run login again");
 }
 
 async function questionVisible(query: string): Promise<string> {

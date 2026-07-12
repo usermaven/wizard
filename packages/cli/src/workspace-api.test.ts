@@ -175,6 +175,83 @@ describe("WorkspaceApiClient", () => {
       /^sha256:[a-f0-9]{64}$/u,
     );
   });
+
+  it("runs the device sign-in flow and maps poll outcomes", async () => {
+    let polls = 0;
+    const api = fakeApi((request) => {
+      if (request.path === "/v1/auth/device/authorize") {
+        return {
+          json: {
+            device_code: "device-1",
+            user_code: "BCDF-GHJK",
+            verification_uri: "https://app.test/cli-login",
+            verification_uri_complete:
+              "https://app.test/cli-login?code=BCDF-GHJK",
+            expires_in: 900,
+            interval: 5,
+          },
+        };
+      }
+      if (request.path === "/v1/auth/device/token") {
+        polls += 1;
+        if (polls === 1)
+          return { status: 400, json: { error: "authorization_pending" } };
+        if (polls === 2)
+          return { status: 400, json: { error: "access_denied" } };
+        if (polls === 3)
+          return { status: 400, json: { error: "expired_token" } };
+        return {
+          json: {
+            access_token: "at",
+            refresh_token: "rt",
+            token_type: "bearer",
+            email: "dev@example.com",
+          },
+        };
+      }
+      return { status: 404 };
+    });
+    const client = new WorkspaceApiClient({
+      baseUrl: "https://api.test",
+      fetchImplementation: api.fetchImplementation,
+    });
+
+    const device = await client.startDeviceAuthorization("Usermaven Wizard");
+    expect(device).toMatchObject({
+      deviceCode: "device-1",
+      userCode: "BCDF-GHJK",
+      intervalSeconds: 5,
+    });
+    expect(api.requests[0]?.body).toEqual({ client_name: "Usermaven Wizard" });
+
+    expect(await client.pollDeviceToken("device-1")).toEqual({
+      status: "pending",
+    });
+    expect(await client.pollDeviceToken("device-1")).toEqual({
+      status: "denied",
+    });
+    expect(await client.pollDeviceToken("device-1")).toEqual({
+      status: "expired",
+    });
+    expect(await client.pollDeviceToken("device-1")).toEqual({
+      status: "ok",
+      accessToken: "at",
+      refreshToken: "rt",
+      email: "dev@example.com",
+    });
+  });
+
+  it("signals password fallback when the device endpoint is missing", async () => {
+    const api = fakeApi(() => ({ status: 404, json: { detail: "Not Found" } }));
+    const client = new WorkspaceApiClient({
+      baseUrl: "https://api.test",
+      fetchImplementation: api.fetchImplementation,
+    });
+
+    expect(
+      await client.startDeviceAuthorization("Usermaven Wizard"),
+    ).toBeNull();
+  });
 });
 
 describe("starterTrends", () => {

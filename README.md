@@ -65,9 +65,15 @@ managers. Requires Node.js 20 or newer.
 ## Connect your workspace
 
 ```sh
-npx @usermaven/wizard login          # email + password (2FA supported)
+npx @usermaven/wizard login          # browser-approved device sign-in
 npx @usermaven/wizard workspaces     # list workspaces, keys, tracking hosts
 ```
+
+`login` prints a short code and a link — approve it from any signed-in
+browser session and the CLI finishes on its own, no password typed into the
+terminal. Use `login --password` for email + password (2FA supported) where
+the API doesn't offer device sign-in yet; the CLI also falls back to it
+automatically.
 
 Signing in makes the guided setup pick your workspace from a list — name,
 tracking host, and key fingerprint are filled in automatically — and unlocks
@@ -84,6 +90,21 @@ generated code references the key only through an environment variable (for
 example `NEXT_PUBLIC_USERMAVEN_KEY`) whose value you set yourself in
 `.env.local` and your hosting provider. See the
 [deployment guide](docs/deployment.md).
+
+### Environments
+
+The CLI talks to Usermaven Cloud by default. Point it elsewhere with
+`login --api-url <url>` (persisted with your credentials) or the
+`USERMAVEN_API_URL` environment variable:
+
+| Environment | API                            | Web app                       |
+| ----------- | ------------------------------ | ----------------------------- |
+| Production  | `https://api.usermaven.com`    | `https://app.usermaven.com`   |
+| Staging     | `https://api.stage.usrmvn.com` | `https://stage.usermaven.com` |
+
+The tracking host is per-workspace (your verified custom domain, or
+`https://events.usermaven.com`) and is discovered automatically when you are
+signed in.
 
 ## Use with a coding agent (recommended)
 

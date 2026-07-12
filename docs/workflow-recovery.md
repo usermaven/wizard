@@ -1,6 +1,6 @@
 # Workflow checkpoint and recovery playbook
 
-Wizard `0.13.1` can persist and resume the setup workflow without becoming an
+Wizard `0.14.0` can persist and resume the setup workflow without becoming an
 agent runtime. A checkpoint records the canonical repository fingerprint, last
 completed setup step, repository-relative artifact paths, and canonical SHA-256
 digests. It does not store model prompts, source snapshots, environment values,

@@ -1,6 +1,6 @@
 {
   "name": "@usermaven/wizard",
-  "version": "0.13.1",
+  "version": "0.14.0",
   "description": "Local-first Usermaven installation, instrumentation, and verification CLI.",
   "license": "MIT",
   "repository": {
@@ -47,8 +47,8 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "1.29.0",
-    "@usermaven/wizard-core": "0.13.1",
-    "@usermaven/wizard-schemas": "0.13.1",
+    "@usermaven/wizard-core": "0.14.0",
+    "@usermaven/wizard-schemas": "0.14.0",
     "zod": "4.4.3"
   },
   "publishConfig": {

@@ -1,7 +1,7 @@
 # Local MCP development playbook
 
 The Usermaven Wizard MCP server runs as a local child process over stdio. It has
-no listening port and makes no remote Usermaven calls. Version `0.13.0` exposes:
+no listening port and makes no remote Usermaven calls. Version `0.14.0` exposes:
 
 - `inspect_project`: normalized framework and analytics evidence
 - `checkpoint_workflow`: persist private, digest-bound workflow state
@@ -63,7 +63,7 @@ and `doctor`.
 With the published npm package, the equivalent command is:
 
 ```sh
-npx -y -p @usermaven/wizard@0.13.1 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.14.0 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 

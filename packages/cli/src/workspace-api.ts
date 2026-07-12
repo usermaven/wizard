@@ -37,6 +37,26 @@ export interface StarterDashboardResult {
   trendIds: string[];
 }
 
+export interface DeviceAuthorization {
+  deviceCode: string;
+  userCode: string;
+  verificationUri: string;
+  verificationUriComplete: string;
+  expiresInSeconds: number;
+  intervalSeconds: number;
+}
+
+export type DeviceTokenResult =
+  | { status: "pending" }
+  | { status: "denied" }
+  | { status: "expired" }
+  | {
+      status: "ok";
+      accessToken: string;
+      refreshToken: string | null;
+      email: string | null;
+    };
+
 function asRecord(value: unknown): Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
     throw new Error("The Usermaven API returned an unexpected response shape");
@@ -117,6 +137,96 @@ export class WorkspaceApiClient {
       );
     }
     return response.json();
+  }
+
+  private async rawRequest(
+    method: string,
+    path: string,
+    body?: unknown,
+  ): Promise<Response> {
+    try {
+      return await this.fetchImplementation(`${this.baseUrl}${path}`, {
+        method,
+        headers: {
+          accept: "application/json",
+          ...(body !== undefined ? { "content-type": "application/json" } : {}),
+        },
+        ...(body !== undefined ? { body: JSON.stringify(body) } : {}),
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
+    } catch {
+      throw new Error(
+        `Could not reach the Usermaven API at ${this.baseUrl}; check connectivity or --api-url`,
+      );
+    }
+  }
+
+  /**
+   * Starts a browser-approved device sign-in. Returns null when the API does
+   * not support the device flow yet, so callers can fall back to password
+   * login.
+   */
+  async startDeviceAuthorization(
+    clientName: string,
+  ): Promise<DeviceAuthorization | null> {
+    const response = await this.rawRequest(
+      "POST",
+      "/v1/auth/device/authorize",
+      {
+        client_name: clientName,
+      },
+    );
+    if (response.status === 404 || response.status === 405) return null;
+    if (!response.ok) {
+      throw new Error(
+        `The Usermaven API returned HTTP ${response.status} while starting device sign-in`,
+      );
+    }
+    const result = asRecord(await response.json());
+    return {
+      deviceCode: requireString(result, "device_code"),
+      userCode: requireString(result, "user_code"),
+      verificationUri: requireString(result, "verification_uri"),
+      verificationUriComplete: requireString(
+        result,
+        "verification_uri_complete",
+      ),
+      expiresInSeconds:
+        typeof result["expires_in"] === "number" ? result["expires_in"] : 900,
+      intervalSeconds:
+        typeof result["interval"] === "number" ? result["interval"] : 5,
+    };
+  }
+
+  async pollDeviceToken(deviceCode: string): Promise<DeviceTokenResult> {
+    const response = await this.rawRequest("POST", "/v1/auth/device/token", {
+      device_code: deviceCode,
+    });
+    if (response.status === 400) {
+      const body = asRecord(await response.json());
+      const code = body["error"];
+      if (code === "authorization_pending") return { status: "pending" };
+      if (code === "access_denied") return { status: "denied" };
+      return { status: "expired" };
+    }
+    if (!response.ok) {
+      throw new Error(
+        `The Usermaven API returned HTTP ${response.status} while completing device sign-in`,
+      );
+    }
+    const result = asRecord(await response.json());
+    return {
+      status: "ok",
+      accessToken: requireString(result, "access_token"),
+      refreshToken:
+        typeof result["refresh_token"] === "string"
+          ? (result["refresh_token"] as string)
+          : null,
+      email:
+        typeof result["email"] === "string"
+          ? (result["email"] as string)
+          : null,
+    };
   }
 
   async login(
