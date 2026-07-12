@@ -36,4 +36,23 @@ describe("CLI argument parsing", () => {
       ).toThrow("--ttl must be an integer from 1 to 60");
     },
   );
+
+  it("accepts allowed boolean flags without consuming values", () => {
+    const parsed = parseArguments(
+      ["--baseline", "project"],
+      [],
+      ["--baseline"],
+    );
+    expect(parsed.booleans.has("--baseline")).toBe(true);
+    expect(parsed.positionals).toEqual(["project"]);
+  });
+
+  it("rejects duplicate and unlisted boolean flags", () => {
+    expect(() =>
+      parseArguments(["--baseline", "--baseline"], [], ["--baseline"]),
+    ).toThrow("--baseline may be provided only once");
+    expect(() => parseArguments(["--baseline"], [])).toThrow(
+      "Unknown option: --baseline",
+    );
+  });
 });

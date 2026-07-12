@@ -42,11 +42,24 @@ human in a terminal.
 
 ## Commands
 
-`setup` · `inspect` · `plan` · `setup-plan` · `preview` · `approve` · `apply`
+`setup` (interactive guided flow) · `inspect` · `plan` (`--baseline` for a
+zero-config page-view plan) · `setup-plan` · `preview` · `approve` · `apply`
 · `verification-session` · `verify` · `checkpoint` · `resume` · `next` ·
-`apply-lock` · `recover-lock` · `manifest`
+`apply-lock` · `recover-lock` · `report` · `doctor` · `uninstall` ·
+`manifest`
 
-Run `npx @usermaven/wizard --help` for flags.
+Run `npx @usermaven/wizard --help` for flags. The wizard sends no telemetry.
+
+## Claude Code skill
+
+The package ships a ready-made skill at `skills/usermaven-setup/SKILL.md`.
+Copy it into your project to teach Claude Code the full setup flow:
+
+```sh
+mkdir -p .claude/skills/usermaven-setup
+cp node_modules/@usermaven/wizard/skills/usermaven-setup/SKILL.md \
+  .claude/skills/usermaven-setup/
+```
 
 ## Documentation
 

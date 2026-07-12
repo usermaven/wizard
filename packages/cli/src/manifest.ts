@@ -14,6 +14,7 @@ export const MCP_TOOLS = {
   applyChanges: "apply_changes",
   prepareVerification: "prepare_verification",
   verifySetup: "verify_setup",
+  doctor: "doctor",
 } as const;
 
 const readOnly = (
@@ -126,7 +127,21 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Convert a stale orphaned apply lock into a terminal consumed record without replaying it.",
       false,
     ),
-    readOnly("doctor", "Diagnose configuration and connectivity problems."),
+    readOnly(
+      "doctor",
+      "Diagnose configuration and connectivity problems.",
+      "implemented",
+    ),
+    readOnly(
+      "report",
+      "Render a human-readable setup report from existing artifacts.",
+      "implemented",
+    ),
+    readOnly(
+      "uninstall",
+      "Detect installed Usermaven pieces and print a removal checklist.",
+      "implemented",
+    ),
     readOnly(
       "manifest",
       "Print this machine-readable command manifest.",
@@ -177,6 +192,10 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Verify setup without returning raw analytics payloads.",
       "implemented",
     ),
-    readOnly("doctor", "Return normalized local diagnostics."),
+    readOnly(
+      MCP_TOOLS.doctor,
+      "Return normalized local diagnostics.",
+      "implemented",
+    ),
   ],
 });

@@ -1,7 +1,16 @@
 # Troubleshooting
 
-Symptoms are grouped by phase. Every CLI command prints structured JSON; the
-`code` field in an error is the fastest way to find the right section here.
+Start with the built-in diagnostics — they check your Node.js version,
+project root, framework support, private state directory, and (optionally)
+tracking-host reachability:
+
+```sh
+usermaven-wizard doctor . --tracking-host https://events.usermaven.com
+```
+
+Symptoms below are grouped by phase. Every CLI command prints structured
+JSON; the `code` field in an error is the fastest way to find the right
+section here.
 
 ## Inspection and planning
 

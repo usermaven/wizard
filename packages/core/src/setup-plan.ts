@@ -34,7 +34,7 @@ export interface GenerateSetupPlanInput {
   projectRoot: string;
   workspace: WorkspacePublicConfig;
   trackingPlan: TrackingPlan;
-  instrumentationProposal: AiInstrumentationProposal;
+  instrumentationProposal?: AiInstrumentationProposal;
 }
 
 function trackingItemKey(item: {
@@ -364,78 +364,112 @@ export async function generateSetupPlan(
     );
   }
   const trackingPlan = trackingPlanSchema.parse(input.trackingPlan);
-  if (trackingPlan.proposal?.mode !== "ai_generated") {
-    throw new Error("Setup generation requires an AI-generated tracking plan");
+  const proposal = trackingPlan.proposal;
+  const planMode = proposal?.mode;
+  if (
+    !proposal ||
+    (planMode !== "ai_generated" && planMode !== "deterministic_baseline")
+  ) {
+    throw new Error(
+      "Setup generation requires an AI-generated or deterministic baseline tracking plan",
+    );
   }
-  if (trackingPlan.proposal.source.framework !== inspection.project.framework) {
+  if (proposal.source.framework !== inspection.project.framework) {
     throw new Error(
       "Tracking plan framework does not match the inspected setup project",
     );
   }
-  const instrumentation = aiInstrumentationProposalSchema.parse(
-    input.instrumentationProposal,
-  );
-  if (instrumentation.tracking_plan_id !== trackingPlan.plan_id) {
+  if (planMode === "deterministic_baseline") {
+    if (input.instrumentationProposal !== undefined) {
+      throw new Error(
+        "Baseline tracking plans do not accept an AI instrumentation proposal",
+      );
+    }
+    if (trackingPlan.identity.length > 0 || trackingPlan.events.length > 0) {
+      throw new Error(
+        "Baseline tracking plans cannot contain tracking items; use an AI-generated plan with instrumentation",
+      );
+    }
+  }
+  if (
+    planMode === "ai_generated" &&
+    input.instrumentationProposal === undefined
+  ) {
     throw new Error(
-      "AI instrumentation proposal does not match the tracking plan",
+      "AI-generated tracking plans require an AI instrumentation proposal",
     );
   }
-  const requiredItems = new Set([
-    ...trackingPlan.identity.map((identity) =>
-      trackingItemKey({
-        kind: "identity",
-        identity_kind: identity.kind,
-        identifier: identity.identifier,
-      }),
-    ),
-    ...trackingPlan.events.map((event) =>
-      trackingItemKey({ kind: "event", event_id: event.id }),
-    ),
-  ]);
-  const coveredItems = new Set<string>();
-  for (const change of instrumentation.changes) {
-    for (const item of change.covers) {
-      const key = trackingItemKey(item);
+  const instrumentation =
+    input.instrumentationProposal === undefined
+      ? null
+      : aiInstrumentationProposalSchema.parse(input.instrumentationProposal);
+  if (instrumentation) {
+    if (instrumentation.tracking_plan_id !== trackingPlan.plan_id) {
+      throw new Error(
+        "AI instrumentation proposal does not match the tracking plan",
+      );
+    }
+    const requiredItems = new Set([
+      ...trackingPlan.identity.map((identity) =>
+        trackingItemKey({
+          kind: "identity",
+          identity_kind: identity.kind,
+          identifier: identity.identifier,
+        }),
+      ),
+      ...trackingPlan.events.map((event) =>
+        trackingItemKey({ kind: "event", event_id: event.id }),
+      ),
+    ]);
+    const coveredItems = new Set<string>();
+    for (const change of instrumentation.changes) {
+      for (const item of change.covers) {
+        const key = trackingItemKey(item);
+        if (!requiredItems.has(key)) {
+          throw new Error(
+            "AI instrumentation covers an unknown tracking-plan item",
+          );
+        }
+        coveredItems.add(key);
+      }
+    }
+    const deferredItems = new Set<string>();
+    for (const deferred of instrumentation.deferred) {
+      const key = trackingItemKey(deferred.item);
       if (!requiredItems.has(key)) {
         throw new Error(
-          "AI instrumentation covers an unknown tracking-plan item",
+          "AI instrumentation defers an unknown tracking-plan item",
         );
       }
-      coveredItems.add(key);
+      if (deferredItems.has(key)) {
+        throw new Error(
+          "AI instrumentation defers the same item more than once",
+        );
+      }
+      if (coveredItems.has(key)) {
+        throw new Error(
+          "AI instrumentation cannot both implement and defer an item",
+        );
+      }
+      deferredItems.add(key);
     }
-  }
-  const deferredItems = new Set<string>();
-  for (const deferred of instrumentation.deferred) {
-    const key = trackingItemKey(deferred.item);
-    if (!requiredItems.has(key)) {
-      throw new Error(
-        "AI instrumentation defers an unknown tracking-plan item",
-      );
-    }
-    if (deferredItems.has(key)) {
-      throw new Error("AI instrumentation defers the same item more than once");
-    }
-    if (coveredItems.has(key)) {
-      throw new Error(
-        "AI instrumentation cannot both implement and defer an item",
-      );
-    }
-    deferredItems.add(key);
-  }
-  const missingItems = [...requiredItems].filter(
-    (item) => !coveredItems.has(item) && !deferredItems.has(item),
-  );
-  if (missingItems.length > 0) {
-    throw new Error(
-      "AI instrumentation must implement or explicitly defer every tracking-plan item",
+    const missingItems = [...requiredItems].filter(
+      (item) => !coveredItems.has(item) && !deferredItems.has(item),
     );
+    if (missingItems.length > 0) {
+      throw new Error(
+        "AI instrumentation must implement or explicitly defer every tracking-plan item",
+      );
+    }
   }
   const root = await realpath(input.projectRoot);
-  await Promise.all(
-    instrumentation.changes.map((change) =>
-      validateInstrumentationChange(root, change),
-    ),
-  );
+  if (instrumentation) {
+    await Promise.all(
+      instrumentation.changes.map((change) =>
+        validateInstrumentationChange(root, change),
+      ),
+    );
+  }
   const defaults = environmentDefaults(inspection.project.framework);
   const workspace = workspacePublicConfigSchema.parse({
     ...input.workspace,
@@ -511,7 +545,7 @@ export async function generateSetupPlan(
         : [],
     ),
   );
-  for (const change of instrumentation.changes) {
+  for (const change of instrumentation?.changes ?? []) {
     if (generatedMutationPaths.has(change.path)) {
       throw new Error(
         "AI instrumentation conflicts with a generated setup operation",
@@ -538,7 +572,7 @@ export async function generateSetupPlan(
       });
     }
   }
-  for (const deferred of instrumentation.deferred) {
+  for (const deferred of instrumentation?.deferred ?? []) {
     const key = trackingItemKey(deferred.item);
     operations.push({
       id: boundedId("deferred-", key),
@@ -567,11 +601,13 @@ export async function generateSetupPlan(
     "The workspace public key value is intentionally absent and must be supplied through the named environment variable.",
     "Route and authentication integration points require human review before changes are applied.",
   ];
-  risks.push(...instrumentation.warnings);
-  if (instrumentation.deferred.length > 0) {
-    risks.push(
-      `${instrumentation.deferred.length} tracking-plan item(s) remain explicitly deferred and require manual implementation.`,
-    );
+  if (instrumentation) {
+    risks.push(...instrumentation.warnings);
+    if (instrumentation.deferred.length > 0) {
+      risks.push(
+        `${instrumentation.deferred.length} tracking-plan item(s) remain explicitly deferred and require manual implementation.`,
+      );
+    }
   }
   if (inspection.scan.truncated) {
     risks.push(
@@ -604,15 +640,19 @@ export async function generateSetupPlan(
     project: inspection.project,
     operations,
     tracking_plan: trackingPlan,
-    instrumentation: {
-      generated_by: instrumentation.generated_by,
-      coverage: instrumentation.changes.map((change) => ({
-        operation_id: boundedId("instrument-", change.id),
-        items: change.covers,
-      })),
-      deferred: instrumentation.deferred,
-      warnings: instrumentation.warnings,
-    },
+    ...(instrumentation
+      ? {
+          instrumentation: {
+            generated_by: instrumentation.generated_by,
+            coverage: instrumentation.changes.map((change) => ({
+              operation_id: boundedId("instrument-", change.id),
+              items: change.covers,
+            })),
+            deferred: instrumentation.deferred,
+            warnings: instrumentation.warnings,
+          },
+        }
+      : {}),
     checks: [
       {
         id: "sdk-declared",

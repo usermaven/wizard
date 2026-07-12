@@ -9,7 +9,10 @@ import {
 } from "@usermaven/wizard-schemas";
 import { describe, expect, it } from "vitest";
 
-import { createAiTrackingPlan } from "./tracking-plan.js";
+import {
+  createAiTrackingPlan,
+  createBaselineTrackingPlan,
+} from "./tracking-plan.js";
 
 const now = () => new Date("2026-07-11T13:00:00Z");
 const options = { now, idFactory: () => "test-12345678" };
@@ -249,5 +252,41 @@ describe("createAiTrackingPlan", () => {
         ],
       }),
     ).toThrow("review rationale");
+  });
+});
+
+describe("createBaselineTrackingPlan", () => {
+  it("creates a deterministic plan with no tracking items", () => {
+    const plan = createBaselineTrackingPlan(
+      { inspection: inspection() },
+      options,
+    );
+    expect(trackingPlanSchema.parse(plan)).toEqual(plan);
+    expect(plan.plan_id).toBe("plan_test-12345678");
+    expect(plan.identity).toEqual([]);
+    expect(plan.events).toEqual([]);
+    expect(plan.proposal?.mode).toBe("deterministic_baseline");
+    expect(plan.proposal?.review_required).toBe(true);
+    expect(plan.proposal?.generated_by).toBeUndefined();
+    expect(plan.proposal?.source.framework).toBe("react-vite");
+  });
+
+  it("carries inspection warnings about other analytics providers", () => {
+    const plan = createBaselineTrackingPlan(
+      {
+        inspection: inspection({
+          analytics_dependencies: [
+            {
+              provider: "posthog",
+              package_name: "posthog-js",
+              version_range: "^1.0.0",
+              dependency_type: "production",
+            },
+          ],
+        }),
+      },
+      options,
+    );
+    expect(plan.proposal?.warnings.join(" ")).toContain("posthog");
   });
 });

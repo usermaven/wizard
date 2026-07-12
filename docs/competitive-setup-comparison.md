@@ -30,10 +30,16 @@ flow sends selected source files to Anthropic through PostHog's gateway.
 
 ## Usermaven gaps to close next
 
-1. OAuth and workspace selection inside the published developer flow.
-2. Starter events, charts, and dashboards after successful verification.
+1. OAuth and workspace selection inside the published developer flow
+   (requires Usermaven API support).
+2. Starter events, charts, and dashboards after successful verification
+   (requires Usermaven API support).
 3. More framework adapters and fixture coverage.
-4. Diagnostic `doctor` checks for local configuration and connectivity.
+
+Closed since this comparison was written: interactive guided `setup`,
+deterministic baseline plans without AI inputs, `doctor` diagnostics,
+`report` setup reports, an `uninstall` checklist, and a bundled Claude Code
+skill (0.12.0).
 
 ## Official references
 

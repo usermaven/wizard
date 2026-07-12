@@ -20,6 +20,7 @@ import {
 import {
   applyResultSchema,
   changePreviewSchema,
+  doctorReportSchema,
   projectInspectionSchema,
   setupPlanSchema,
   setupPlanArtifactReferenceSchema,
@@ -149,6 +150,7 @@ describe("local MCP server", () => {
         "apply_changes",
         "prepare_verification",
         "verify_setup",
+        "doctor",
       ]);
       expect(
         tools.find((tool) => tool.name === "verify_setup")?.description,
@@ -254,6 +256,52 @@ describe("local MCP server", () => {
       expect(plan.proposal?.mode).toBe("ai_generated");
       expect(plan.proposal?.review_required).toBe(true);
       expect(plan.events.every((event) => event.revenue === false)).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("creates a deterministic baseline plan without AI inputs", async () => {
+    const { client, server } = await connectedServer(fixtures);
+    try {
+      const result = await client.callTool({
+        name: "propose_tracking_plan",
+        arguments: { project_path: "react-vite", baseline: true },
+      });
+      expect(result.isError).not.toBe(true);
+      const plan = trackingPlanSchema.parse(result.structuredContent);
+      expect(plan.proposal?.mode).toBe("deterministic_baseline");
+      expect(plan.events).toEqual([]);
+
+      const rejected = await client.callTool({
+        name: "propose_tracking_plan",
+        arguments: {
+          project_path: "react-vite",
+          baseline: true,
+          business_context: businessContext,
+        },
+      });
+      expect(rejected.isError).toBe(true);
+    } finally {
+      await client.close();
+      await server.close();
+    }
+  });
+
+  it("returns normalized read-only diagnostics from the doctor tool", async () => {
+    const { client, server } = await connectedServer(fixtures);
+    try {
+      const result = await client.callTool({
+        name: "doctor",
+        arguments: { project_path: "react-vite" },
+      });
+      expect(result.isError).not.toBe(true);
+      const report = doctorReportSchema.parse(result.structuredContent);
+      expect(report.overall).toBe("ok");
+      expect(
+        report.checks.find((check) => check.id === "framework-support"),
+      ).toMatchObject({ status: "ok" });
     } finally {
       await client.close();
       await server.close();

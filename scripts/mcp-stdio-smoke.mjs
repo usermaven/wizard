@@ -22,9 +22,18 @@ try {
   const names = listed.tools.map((tool) => tool.name);
   if (
     names.join(",") !==
-    "inspect_project,checkpoint_workflow,resume_workflow,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes,prepare_verification,verify_setup"
+    "inspect_project,checkpoint_workflow,resume_workflow,propose_tracking_plan,generate_setup_plan,preview_changes,apply_changes,prepare_verification,verify_setup,doctor"
   ) {
     throw new Error(`Unexpected MCP tools: ${names.join(", ")}`);
+  }
+
+  stage = "doctor";
+  const diagnosed = await client.callTool({
+    name: "doctor",
+    arguments: { project_path: "react-vite" },
+  });
+  if (diagnosed.isError || diagnosed.structuredContent?.overall !== "ok") {
+    throw new Error("MCP doctor smoke call failed");
   }
 
   stage = "inspect_project";

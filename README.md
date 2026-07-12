@@ -1,5 +1,9 @@
 # Usermaven Wizard ✨
 
+[![CI](https://github.com/usermaven/wizard/actions/workflows/ci.yml/badge.svg)](https://github.com/usermaven/wizard/actions/workflows/ci.yml)
+[![node >= 20](https://img.shields.io/badge/node-%3E%3D20-brightgreen)](https://nodejs.org)
+[![license MIT](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
+
 Add [Usermaven](https://usermaven.com) product analytics to your app in
 minutes. The wizard inspects your project, proposes a tracking plan tailored to
 your codebase, shows you every change before it is written, and verifies that
@@ -9,6 +13,12 @@ MCP server for coding agents like Claude Code and Cursor.
 ```sh
 npx @usermaven/wizard setup .
 ```
+
+Running `setup` in a terminal starts an interactive guided flow: it detects
+your framework, asks for your workspace details, previews the exact changes,
+applies them after your typed approval, and can leave a
+`usermaven-setup-report.md` behind. In non-interactive contexts (agents, CI)
+the same command returns a machine-readable next action.
 
 > [!IMPORTANT]
 > `@usermaven/wizard` has not been published to npm yet. Until it is, run the
@@ -22,8 +32,9 @@ The wizard walks one loop from empty project to verified analytics:
 
 1. **Inspect** — detects your framework, package manager, and any existing
    analytics SDKs. Read-only.
-2. **Plan** — turns your business context into a reviewable tracking plan of
-   events and properties. Read-only.
+2. **Plan** — a baseline plan (automatic page views, zero configuration) or a
+   reviewable AI tracking plan of custom events built from your business
+   context. Read-only.
 3. **Preview** — renders the exact package installs and file diffs the setup
    would make, without touching anything.
 4. **Approve** — you confirm the exact operations in an interactive terminal.
@@ -95,7 +106,8 @@ interactive approval in a terminal —
 the agent cannot approve on your behalf. See the
 [local MCP guide](docs/local-mcp.md) for Claude Code and Cursor specifics, and
 the [AI planning playbook](docs/ai-tracking-plans.md) for how agents generate
-tracking plans.
+tracking plans. The npm package also ships a ready-made Claude Code skill at
+`skills/usermaven-setup/SKILL.md`.
 
 ## What the wizard will and won't do
 
@@ -110,26 +122,32 @@ tracking plans.
   be rolled back from recorded before/after hashes.
 - Verification returns normalized pass/fail results, **never captured event
   payloads**.
+- The wizard sends **no telemetry**. The only network calls it ever makes are
+  the package install you approve and the optional
+  `doctor --tracking-host` reachability check you request.
 
 The full rationale lives in the [threat model](docs/threat-model.md) and
 [architecture](docs/architecture.md).
 
 ## Commands
 
-| Command                          | What it does                                                          |
-| -------------------------------- | --------------------------------------------------------------------- |
-| `setup [path]`                   | Start a guided setup workflow and return the next action              |
-| `inspect [path]`                 | Detect framework, package manager, and existing analytics (read-only) |
-| `plan [path]`                    | Validate and stamp an AI-proposed tracking plan (read-only)           |
-| `setup-plan [path]`              | Generate the exact install/file operations for your workspace         |
-| `preview <plan>`                 | Render every operation and diff without applying anything             |
-| `approve <plan>`                 | Interactively approve exact operations (short-lived, single-use)      |
-| `apply <plan>`                   | Execute only the approved operations                                  |
-| `verification-session <plan>`    | Open a short-lived, marker-bound verification session                 |
-| `verify <plan>`                  | Check local files plus runtime, transport, and workspace evidence     |
-| `checkpoint` / `resume` / `next` | Save progress and get the single next action after an interruption    |
-| `apply-lock` / `recover-lock`    | Inspect and recover an interrupted apply                              |
-| `manifest`                       | Print the machine-readable command manifest                           |
+| Command                          | What it does                                                                |
+| -------------------------------- | --------------------------------------------------------------------------- |
+| `setup [path]`                   | Interactive guided setup on a terminal; JSON next action otherwise          |
+| `inspect [path]`                 | Detect framework, package manager, and existing analytics (read-only)       |
+| `plan [path]`                    | Stamp a tracking plan: `--baseline` for page views only, or AI inputs       |
+| `setup-plan [path]`              | Generate the exact install/file operations for your workspace               |
+| `preview <plan>`                 | Render every operation and diff without applying anything                   |
+| `approve <plan>`                 | Interactively approve exact operations (short-lived, single-use)            |
+| `apply <plan>`                   | Execute only the approved operations                                        |
+| `verification-session <plan>`    | Open a short-lived, marker-bound verification session                       |
+| `verify <plan>`                  | Check local files plus runtime, transport, and workspace evidence           |
+| `checkpoint` / `resume` / `next` | Save progress and get the single next action after an interruption          |
+| `apply-lock` / `recover-lock`    | Inspect and recover an interrupted apply                                    |
+| `report <plan>`                  | Render a human-readable setup report from existing artifacts (read-only)    |
+| `doctor [path]`                  | Read-only diagnostics: Node, framework support, state, host reachability    |
+| `uninstall [path]`               | Detect installed Usermaven pieces and print a removal checklist (read-only) |
+| `manifest`                       | Print the machine-readable command manifest                                 |
 
 Run `usermaven-wizard --help` for full flags. Read-only commands accept
 `--compact` for single-line JSON.

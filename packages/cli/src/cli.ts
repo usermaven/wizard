@@ -17,6 +17,7 @@ import {
   applyChanges,
   approvalConfirmation,
   createAiTrackingPlan,
+  createBaselineTrackingPlan,
   createChangeApproval,
   createVerificationSession,
   digestSetupPlan,
@@ -25,9 +26,11 @@ import {
   inspectApplyLock,
   loadChangeApproval,
   loadSetupPlanArtifact,
+  planUninstall,
   previewChanges,
   recoverStaleApplyLock,
   resumeWorkflow,
+  runDoctor,
   saveWorkflowCheckpoint,
   storeChangeApproval,
   storeSetupPlanArtifact,
@@ -37,26 +40,31 @@ import {
 import {
   aiTrackingProposalSchema,
   aiInstrumentationProposalSchema,
+  applyResultSchema,
   businessContextSchema,
   changeApprovalSchema,
   setupPlanSchema,
   verificationEvidenceSchema,
+  verificationResultSchema,
   verificationSessionSchema,
   workflowStepSchema,
 } from "@usermaven/wizard-schemas";
 
 import { manifest } from "./manifest.js";
 import { integerOption, parseArguments } from "./arguments.js";
+import { buildSetupReport } from "./report.js";
+import { runGuidedSetup } from "./guided.js";
 
 const help = `Usermaven Wizard
 
 Usage:
+  usermaven-wizard setup [path] [--json] [--compact]
   usermaven-wizard inspect [path] [--compact]
-  usermaven-wizard plan [path] --business-context <context.json>
-    --ai-proposal <proposal.json> [--compact]
+  usermaven-wizard plan [path] (--baseline | --business-context <context.json>
+    --ai-proposal <proposal.json>) [--compact]
   usermaven-wizard setup-plan [path] --workspace-name <name> --region <region>
     --key-fingerprint <sha256:fingerprint> --tracking-host <https-url>
-    --tracking-plan <tracking-plan.json> --ai-instrumentation <changes.json>
+    --tracking-plan <tracking-plan.json> [--ai-instrumentation <changes.json>]
     [--key-env-var <name>] [--tracking-host-env-var <name>] [--compact]
   usermaven-wizard preview [<setup-plan.json> | --plan-digest <digest>]
     [--root <path>] [--compact]
@@ -76,15 +84,21 @@ Usage:
     [--approval <path>] [--apply-result <path>] [--session <path>]
     [--verification-result <path>] [--compact]
   usermaven-wizard resume [path] --workflow-id <id> [--compact]
-  usermaven-wizard setup [path] [--compact]
   usermaven-wizard next [path] --workflow-id <id> [--compact]
   usermaven-wizard apply-lock [path] --approval-id <id> [--compact]
   usermaven-wizard recover-lock [path] --approval-id <id>
     --confirm "RECOVER <id>" [--compact]
+  usermaven-wizard report [<setup-plan.json> | --plan-digest <digest>]
+    [--apply-result <result.json>] [--verification-result <result.json>]
+    [--root <path>] [--output <report.md>]
+  usermaven-wizard doctor [path] [--tracking-host <https-url>] [--compact]
+  usermaven-wizard uninstall [path] [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
-Inspection, planning, and preview are read-only. Approve requires an interactive
+Setup runs an interactive guided flow on a terminal and prints a
+machine-readable next action otherwise (or with --json). Inspection, planning,
+preview, doctor, and uninstall are read-only. Approve requires an interactive
 terminal confirmation. Apply executes only the exact operations bound to that
 unexpired approval artifact.`;
 
@@ -222,8 +236,20 @@ async function main(): Promise<void> {
                           ? ["--approval-id"]
                           : command === "recover-lock"
                             ? ["--approval-id", "--confirm"]
-                            : [];
-  const parsed = parseArguments(flags, allowedOptions);
+                            : command === "doctor"
+                              ? ["--tracking-host"]
+                              : command === "report"
+                                ? [
+                                    "--plan-digest",
+                                    "--root",
+                                    "--apply-result",
+                                    "--verification-result",
+                                    "--output",
+                                  ]
+                                : [];
+  const allowedBooleans =
+    command === "plan" ? ["--baseline"] : command === "setup" ? ["--json"] : [];
+  const parsed = parseArguments(flags, allowedOptions, allowedBooleans);
   const spacing = parsed.compact ? undefined : 2;
 
   if (command === "manifest") {
@@ -245,6 +271,13 @@ async function main(): Promise<void> {
     const inspection = await inspectProject(
       parsed.positionals[0] ?? process.cwd(),
     );
+    if (parsed.booleans.has("--baseline")) {
+      if (parsed.options.size > 0)
+        throw new Error("--baseline does not accept AI planning inputs");
+      const result = createBaselineTrackingPlan({ inspection });
+      process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+      return;
+    }
     const businessContext = businessContextSchema.parse(
       await readJson(
         requiredOption(parsed.options, "--business-context"),
@@ -271,6 +304,7 @@ async function main(): Promise<void> {
     const keyEnvVar = parsed.options.get("--key-env-var");
     const trackingHostEnvVar = parsed.options.get("--tracking-host-env-var");
     const projectRoot = parsed.positionals[0] ?? process.cwd();
+    const instrumentationPath = parsed.options.get("--ai-instrumentation");
     const result = await generateSetupPlan({
       projectRoot,
       trackingPlan: setupPlanSchema.shape.tracking_plan.parse(
@@ -279,12 +313,13 @@ async function main(): Promise<void> {
           5_000_000,
         ),
       ),
-      instrumentationProposal: aiInstrumentationProposalSchema.parse(
-        await readJson(
-          requiredOption(parsed.options, "--ai-instrumentation"),
-          5_000_000,
-        ),
-      ),
+      ...(instrumentationPath
+        ? {
+            instrumentationProposal: aiInstrumentationProposalSchema.parse(
+              await readJson(instrumentationPath, 5_000_000),
+            ),
+          }
+        : {}),
       workspace: {
         display_name: requiredOption(parsed.options, "--workspace-name"),
         region: requiredOption(parsed.options, "--region"),
@@ -493,10 +528,76 @@ async function main(): Promise<void> {
   if (command === "setup") {
     if (parsed.positionals.length > 1)
       throw new Error("Setup accepts at most one project path");
-    const result = await startGuidedSetup(
-      parsed.positionals[0] ?? process.cwd(),
-    );
+    const projectRoot = parsed.positionals[0] ?? process.cwd();
+    const interactive =
+      !parsed.booleans.has("--json") &&
+      Boolean(process.stdin.isTTY) &&
+      Boolean(process.stdout.isTTY);
+    if (interactive) {
+      await runGuidedSetup({
+        projectRoot,
+        io: { input: process.stdin, output: process.stdout },
+      });
+      return;
+    }
+    const result = await startGuidedSetup(projectRoot);
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "doctor") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Doctor accepts at most one project path");
+    const trackingHost = parsed.options.get("--tracking-host");
+    const result = await runDoctor({
+      projectRoot: parsed.positionals[0] ?? process.cwd(),
+      ...(trackingHost ? { trackingHost } : {}),
+    });
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    if (result.overall === "fail") process.exitCode = 1;
+    return;
+  }
+  if (command === "uninstall") {
+    if (parsed.positionals.length > 1)
+      throw new Error("Uninstall accepts at most one project path");
+    const result = await planUninstall({
+      projectRoot: parsed.positionals[0] ?? process.cwd(),
+    });
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "report") {
+    const plan = await readSetupPlan(
+      parsed.positionals,
+      parsed.options,
+      "Report",
+    );
+    const applyResultPath = parsed.options.get("--apply-result");
+    const verificationResultPath = parsed.options.get("--verification-result");
+    const report = buildSetupReport({
+      plan,
+      ...(applyResultPath
+        ? {
+            applyResult: applyResultSchema.parse(
+              await readJson(applyResultPath, 2_000_000),
+            ),
+          }
+        : {}),
+      ...(verificationResultPath
+        ? {
+            verificationResult: verificationResultSchema.parse(
+              await readJson(verificationResultPath, 2_000_000),
+            ),
+          }
+        : {}),
+      generatedAt: new Date().toISOString(),
+    });
+    const output = parsed.options.get("--output");
+    if (output) {
+      await writeFile(output, report);
+      process.stdout.write(`Report written to ${output}\n`);
+    } else {
+      process.stdout.write(report);
+    }
     return;
   }
   if (command === "next") {

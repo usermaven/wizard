@@ -21,6 +21,8 @@ import { previewChanges } from "./change-preview.js";
 import { applyChanges } from "./apply.js";
 import { createChangeApproval } from "./approval.js";
 import { generateSetupPlan } from "./setup-plan.js";
+import { inspectProject } from "./inspector.js";
+import { createBaselineTrackingPlan } from "./tracking-plan.js";
 import {
   createVerificationSession,
   verifySetup,
@@ -689,7 +691,7 @@ export async function emitLinkCreated() {
     ).rejects.toThrow("tracking_host must use HTTPS");
   });
 
-  it("rejects legacy deterministic plans for new setup generation", async () => {
+  it("rejects baseline plans that carry tracking items", async () => {
     const legacy = trackingPlanSchema.parse({
       ...trackingPlan,
       proposal: {
@@ -706,11 +708,10 @@ export async function emitLinkCreated() {
           projectRoot: join(fixtures, "react-vite"),
           workspace,
           trackingPlan: legacy,
-          instrumentationProposal: instrumentationProposal(legacy),
         },
         options,
       ),
-    ).rejects.toThrow("requires an AI-generated tracking plan");
+    ).rejects.toThrow("Baseline tracking plans cannot contain tracking items");
   });
 
   it("requires every AI tracking item to be implemented or deferred", async () => {
@@ -844,5 +845,87 @@ describe("previewChanges", () => {
       ),
     ).toMatchObject({ contains_repository_source: true });
     expect(preview.warnings.join(" ")).toContain("no package, file, command");
+  });
+});
+
+describe("generateSetupPlan with a baseline tracking plan", () => {
+  it("generates a full deterministic setup without an instrumentation proposal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-baseline-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    const baseline = createBaselineTrackingPlan(
+      { inspection: await inspectProject(root) },
+      options,
+    );
+
+    const plan = await generateSetupPlan(
+      { projectRoot: root, workspace, trackingPlan: baseline },
+      options,
+    );
+
+    expect(setupPlanSchema.parse(plan)).toEqual(plan);
+    expect(plan.instrumentation).toBeUndefined();
+    expect(plan.operations.map((operation) => operation.id)).toEqual(
+      expect.arrayContaining([
+        "install-usermaven-sdk",
+        "create-usermaven-client",
+        "wire-usermaven-entry",
+        "configure-public-environment",
+      ]),
+    );
+    expect(
+      plan.operations.some((operation) =>
+        operation.id.startsWith("instrument-"),
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a baseline plan combined with an instrumentation proposal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-baseline-reject-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    const baseline = createBaselineTrackingPlan(
+      { inspection: await inspectProject(root) },
+      options,
+    );
+
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: root,
+          workspace,
+          trackingPlan: baseline,
+          instrumentationProposal: {
+            ...instrumentationProposal(),
+            tracking_plan_id: baseline.plan_id,
+          },
+        },
+        options,
+      ),
+    ).rejects.toThrow(
+      "Baseline tracking plans do not accept an AI instrumentation proposal",
+    );
+  });
+
+  it("rejects an AI-generated plan without an instrumentation proposal", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-ai-missing-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    const reactViteTrackingPlan = trackingPlanSchema.parse({
+      ...trackingPlan,
+      proposal: {
+        ...trackingPlan.proposal,
+        source: { ...trackingPlan.proposal!.source, framework: "react-vite" },
+      },
+    });
+
+    await expect(
+      generateSetupPlan(
+        { projectRoot: root, workspace, trackingPlan: reactViteTrackingPlan },
+        options,
+      ),
+    ).rejects.toThrow(
+      "AI-generated tracking plans require an AI instrumentation proposal",
+    );
   });
 });

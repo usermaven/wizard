@@ -1,17 +1,19 @@
 # Local MCP development playbook
 
 The Usermaven Wizard MCP server runs as a local child process over stdio. It has
-no listening port and makes no remote Usermaven calls. Version `0.11.0` exposes:
+no listening port and makes no remote Usermaven calls. Version `0.12.0` exposes:
 
 - `inspect_project`: normalized framework and analytics evidence
 - `checkpoint_workflow`: persist private, digest-bound workflow state
 - `resume_workflow`: validate recovery state and return one next action
-- `propose_tracking_plan`: validate and stamp an AI-generated tracking plan
+- `propose_tracking_plan`: validate and stamp an AI-generated tracking plan,
+  or produce a deterministic page-view baseline with `baseline: true`
 - `generate_setup_plan`: persist typed operations and return a compact plan digest
 - `preview_changes`: load a plan digest and render operations with no execution
 - `apply_changes`: plan digest plus a registered signed approval ID
 - `prepare_verification`: a short-lived marker session for one plan/environment
 - `verify_setup`: exact local checks plus normalized live evidence evaluation
+- `doctor`: read-only local diagnostics with normalized statuses
 
 All tools except `checkpoint_workflow` and `apply_changes` are read-only.
 `checkpoint_workflow` changes only private Wizard state and is non-destructive.
@@ -55,13 +57,13 @@ Most desktop and editor clients accept a configuration shaped like this:
 Restart or reload the client after changing its MCP configuration. The client
 should discover exactly `inspect_project`, `checkpoint_workflow`,
 `resume_workflow`, `propose_tracking_plan`, `generate_setup_plan`,
-`preview_changes`, `apply_changes`,
-`prepare_verification`, and `verify_setup`.
+`preview_changes`, `apply_changes`, `prepare_verification`, `verify_setup`,
+and `doctor`.
 
 After the npm package is published, the equivalent command will be:
 
 ```sh
-npx -y -p @usermaven/wizard@0.11.0 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.12.0 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 
@@ -80,7 +82,7 @@ claude mcp add usermaven-wizard -- node \
 
 Or add the [generic configuration](#generic-client-configuration) block to
 `.mcp.json` at the project root to share the server with your team. Run
-`/mcp` inside Claude Code to confirm the nine tools are listed, then ask:
+`/mcp` inside Claude Code to confirm the ten tools are listed, then ask:
 
 > Set up Usermaven in this project using the usermaven-wizard tools. Start
 > with `inspect_project`, checkpoint after each phase, and follow the

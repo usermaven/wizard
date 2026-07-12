@@ -32,9 +32,21 @@ export {
 } from "./setup-plan.js";
 export {
   createAiTrackingPlan,
+  createBaselineTrackingPlan,
   type CreateAiTrackingPlanInput,
   type CreateAiTrackingPlanOptions,
+  type CreateBaselineTrackingPlanInput,
 } from "./tracking-plan.js";
+export {
+  runDoctor,
+  type RunDoctorInput,
+  type RunDoctorOptions,
+} from "./doctor.js";
+export {
+  planUninstall,
+  type PlanUninstallInput,
+  type PlanUninstallOptions,
+} from "./uninstall.js";
 export {
   createVerificationSession,
   verifySetup,

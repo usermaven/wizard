@@ -20,6 +20,36 @@ function digestBusinessContext(context: BusinessContext): string {
   return canonicalJsonDigest(context);
 }
 
+function inspectionWarnings(inspection: ProjectInspection): string[] {
+  const warnings: string[] = [];
+  if (inspection.scan.truncated) {
+    warnings.push(
+      "The normalized repository inspection was truncated; the AI proposal may have incomplete implementation evidence.",
+    );
+  }
+  if (inspection.project.framework === "unknown") {
+    warnings.push(
+      "The framework is unknown; every proposed trigger location requires manual confirmation.",
+    );
+  }
+  const otherProviders = [
+    ...new Set(
+      [
+        ...inspection.analytics_dependencies.map(
+          (dependency) => dependency.provider,
+        ),
+        ...inspection.instrumentation.map((item) => item.provider),
+      ].filter((provider) => provider !== "usermaven"),
+    ),
+  ].sort();
+  if (otherProviders.length > 0) {
+    warnings.push(
+      `Existing analytics providers detected (${otherProviders.join(", ")}); review coexistence, migration, and duplicate-event risk.`,
+    );
+  }
+  return warnings;
+}
+
 export interface CreateAiTrackingPlanInput {
   inspection: ProjectInspection;
   businessContext: BusinessContext;
@@ -49,32 +79,7 @@ export function createAiTrackingPlan(
       "AI-generated revenue events require explicit enabled revenue context",
     );
   }
-  const warnings = [...proposal.warnings];
-  if (inspection.scan.truncated) {
-    warnings.push(
-      "The normalized repository inspection was truncated; the AI proposal may have incomplete implementation evidence.",
-    );
-  }
-  if (inspection.project.framework === "unknown") {
-    warnings.push(
-      "The framework is unknown; every proposed trigger location requires manual confirmation.",
-    );
-  }
-  const otherProviders = [
-    ...new Set(
-      [
-        ...inspection.analytics_dependencies.map(
-          (dependency) => dependency.provider,
-        ),
-        ...inspection.instrumentation.map((item) => item.provider),
-      ].filter((provider) => provider !== "usermaven"),
-    ),
-  ].sort();
-  if (otherProviders.length > 0) {
-    warnings.push(
-      `Existing analytics providers detected (${otherProviders.join(", ")}); review coexistence, migration, and duplicate-event risk.`,
-    );
-  }
+  const warnings = [...proposal.warnings, ...inspectionWarnings(inspection)];
 
   return trackingPlanSchema.parse({
     schema_version: "1",
@@ -92,6 +97,45 @@ export function createAiTrackingPlan(
       business_context_digest: digestBusinessContext(businessContext),
       assumptions: proposal.assumptions,
       warnings: [...new Set(warnings)],
+      source: {
+        framework: inspection.project.framework,
+        inspected_at: inspection.inspected_at,
+        inspection_truncated: inspection.scan.truncated,
+      },
+    },
+    created_at: (options.now ?? (() => new Date()))().toISOString(),
+    wizard_version: WIZARD_VERSION,
+  });
+}
+
+export interface CreateBaselineTrackingPlanInput {
+  inspection: ProjectInspection;
+}
+
+/**
+ * Produces a deterministic tracking plan with no custom events or identity
+ * items. The generated client provides automatic page views, so a baseline
+ * setup needs no AI proposal and no instrumentation edits.
+ */
+export function createBaselineTrackingPlan(
+  input: CreateBaselineTrackingPlanInput,
+  options: CreateAiTrackingPlanOptions = {},
+): TrackingPlan {
+  const inspection = projectInspectionSchema.parse(input.inspection);
+  return trackingPlanSchema.parse({
+    schema_version: "1",
+    plan_id: `plan_${(options.idFactory ?? randomUUID)()}`,
+    identity: [],
+    events: [],
+    shared_properties: [],
+    proposal: {
+      mode: "deterministic_baseline",
+      review_required: true,
+      assumptions: [
+        "Automatic page views are captured by the generated client; no custom events are planned.",
+        "Custom events and identity calls can be added later with an AI-generated tracking plan.",
+      ],
+      warnings: [...new Set(inspectionWarnings(inspection))],
       source: {
         framework: inspection.project.framework,
         inspected_at: inspection.inspected_at,

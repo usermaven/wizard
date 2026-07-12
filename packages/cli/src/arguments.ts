@@ -1,20 +1,29 @@
 export interface ParsedArguments {
   compact: boolean;
   options: Map<string, string>;
+  booleans: Set<string>;
   positionals: string[];
 }
 
 export function parseArguments(
   arguments_: string[],
   allowedOptions: string[],
+  allowedBooleans: string[] = [],
 ): ParsedArguments {
   const options = new Map<string, string>();
+  const booleans = new Set<string>();
   const positionals: string[] = [];
   let compact = false;
   for (let index = 0; index < arguments_.length; index += 1) {
     const argument = arguments_[index]!;
     if (argument === "--compact") {
       compact = true;
+      continue;
+    }
+    if (allowedBooleans.includes(argument)) {
+      if (booleans.has(argument))
+        throw new Error(`${argument} may be provided only once`);
+      booleans.add(argument);
       continue;
     }
     if (!argument.startsWith("--")) {
@@ -40,7 +49,7 @@ export function parseArguments(
     options.set(option, value);
     if (inlineValue === undefined) index += 1;
   }
-  return { compact, options, positionals };
+  return { compact, options, booleans, positionals };
 }
 
 export function integerOption(

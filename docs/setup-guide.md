@@ -1,13 +1,18 @@
 # Setup guide
 
 This guide takes you from an uninstrumented project to verified Usermaven
-analytics. There are two ways to run the flow:
+analytics. There are three ways to run the flow:
 
-- **With a coding agent (recommended)** — Claude Code, Cursor, or any MCP
-  client drives the wizard's tools and drafts the tracking plan for you. You
-  review the plan and approve the file changes in your terminal.
-- **Manually with the CLI** — you author the planning inputs yourself,
-  starting from the templates in [`examples/`](../examples).
+- **Interactive guided setup (fastest)** — run `usermaven-wizard setup .` in a
+  terminal. It inspects the project, asks for your workspace details, uses the
+  baseline tracking plan (automatic page views), and walks you through
+  preview, approval, and apply in one sitting.
+- **With a coding agent** — Claude Code, Cursor, or any MCP client drives the
+  wizard's tools and drafts a custom tracking plan for you. You review the
+  plan and approve the file changes in your terminal.
+- **Manually with the CLI** — you run each phase yourself; the baseline plan
+  needs no input files, and custom plans start from the templates in
+  [`examples/`](../examples).
 
 Either way, the wizard never sees your workspace key, never edits `.env*`
 files, and never writes a file you did not explicitly approve.
@@ -73,20 +78,20 @@ Confirms the detected framework and package manager. Read-only.
 
 ### 2. Create a tracking plan
 
-Copy the templates and edit them for your product:
+The quickest path is the baseline plan — automatic page views, no input files:
 
 ```sh
-cp path/to/wizard/examples/business-context.json .
-cp path/to/wizard/examples/ai-proposal.json .
+usermaven-wizard plan . --baseline > tracking-plan.json
 ```
+
+For custom events and identity calls, author the AI planning inputs instead
+(start from the templates in [`examples/`](../examples)):
 
 - `business-context.json` — your product, goals, key user journeys, and data
   policy in a few sentences each.
 - `ai-proposal.json` — the events and identity calls you want, with names,
   descriptions, triggers, and properties. Start from the template's
   `link_created` example and replace it with your own events.
-
-Then validate and stamp the plan:
 
 ```sh
 usermaven-wizard plan . \
@@ -102,15 +107,15 @@ usermaven-wizard setup-plan . \
   --region us \
   --key-fingerprint sha256:YOUR_FINGERPRINT \
   --tracking-host https://events.usermaven.com \
-  --tracking-plan ./tracking-plan.json \
-  --ai-instrumentation ./ai-instrumentation.json
+  --tracking-plan ./tracking-plan.json > setup-plan.json
 
 usermaven-wizard preview ./setup-plan.json
 ```
 
-`ai-instrumentation.json` holds source-aware edits produced by an agent; for
-a manual setup without one, start from
-[`examples/ai-instrumentation.json`](../examples/ai-instrumentation.json).
+Baseline plans need nothing else. AI-generated plans additionally require
+`--ai-instrumentation ./ai-instrumentation.json` — the source-aware edits
+produced by an agent (template:
+[`examples/ai-instrumentation.json`](../examples/ai-instrumentation.json)).
 The preview renders every operation — package install, generated client
 module, instrumentation diffs — without changing anything.
 
