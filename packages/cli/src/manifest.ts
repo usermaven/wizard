@@ -142,6 +142,31 @@ export const manifest: WizardManifest = wizardManifestSchema.parse({
       "Detect installed Usermaven pieces and print a removal checklist.",
       "implemented",
     ),
+    localState(
+      "login",
+      "Sign in to the Usermaven API interactively (or with an API key) and store credentials privately.",
+      false,
+    ),
+    localState(
+      "logout",
+      "Remove the privately stored Usermaven API credentials.",
+      false,
+    ),
+    readOnly(
+      "whoami",
+      "Show the signed-in Usermaven API session and workspace count.",
+      "implemented",
+    ),
+    readOnly(
+      "workspaces",
+      "List the signed-in account's workspaces with public keys and tracking hosts.",
+      "implemented",
+    ),
+    readOnly(
+      "starter-dashboard",
+      "Create a starter web-analytics dashboard in the selected remote workspace.",
+      "implemented",
+    ),
     readOnly(
       "manifest",
       "Print this machine-readable command manifest.",

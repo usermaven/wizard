@@ -3,11 +3,24 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { PassThrough } from "node:stream";
 
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { runGuidedSetup } from "./guided.js";
 
 const temporaryRoots: string[] = [];
+let previousConfigHome: string | undefined;
+let previousApiKey: string | undefined;
+
+// Point credential lookup at an empty directory so a developer's real
+// Usermaven session never changes the prompts under test.
+beforeEach(async () => {
+  previousConfigHome = process.env["XDG_CONFIG_HOME"];
+  previousApiKey = process.env["USERMAVEN_API_KEY"];
+  const isolated = await mkdtemp(join(tmpdir(), "wizard-guided-config-"));
+  temporaryRoots.push(isolated);
+  process.env["XDG_CONFIG_HOME"] = isolated;
+  delete process.env["USERMAVEN_API_KEY"];
+});
 
 async function scaffoldReactVite(prefix: string): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), prefix));
@@ -28,6 +41,10 @@ async function scaffoldReactVite(prefix: string): Promise<string> {
 
 afterEach(async () => {
   process.exitCode = undefined;
+  if (previousConfigHome === undefined) delete process.env["XDG_CONFIG_HOME"];
+  else process.env["XDG_CONFIG_HOME"] = previousConfigHome;
+  if (previousApiKey === undefined) delete process.env["USERMAVEN_API_KEY"];
+  else process.env["USERMAVEN_API_KEY"] = previousApiKey;
   await Promise.all(
     temporaryRoots.splice(0).map((root) => rm(root, { recursive: true })),
   );

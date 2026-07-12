@@ -73,6 +73,25 @@ Checkpoint/resume is a setup-specific local state machine, not a generic agent
 runtime: it does not execute models, schedule work, own a tool loop, coordinate
 agents, or retain general memory.
 
+## Workspace API access
+
+The CLI's `login`, `whoami`, `workspaces`, and `starter-dashboard` commands
+(and the signed-in guided setup) talk to the Usermaven API directly. This
+client is intentionally narrow:
+
+- It sends only credentials the user explicitly provided (email/password,
+  2FA code, or an organization API key) and the fixed request bodies those
+  commands describe — never repository source, inspection output, plans, or
+  local environment values.
+- It reads back workspace metadata (name, public `identifier`, verified
+  custom domain) and creates dashboards/trends the user asked for. The
+  workspace `server_token` present in API responses is never read, stored,
+  or displayed.
+- Credentials are stored at `~/.config/usermaven-wizard/credentials.json`
+  with mode `0600`, outside every repository, and are deleted by `logout`.
+- The local MCP server exposes none of these remote tools; agents get only
+  the local, approval-bound surface.
+
 ## Remote installation sessions
 
 A future remote endpoint may create short-lived installation sessions. A

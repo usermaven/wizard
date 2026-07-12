@@ -1,0 +1,51 @@
+name: Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      dist-tag:
+        description: "npm dist-tag to publish under"
+        required: false
+        default: "latest"
+
+permissions:
+  contents: read
+  id-token: write # npm provenance attestation
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    environment: npm-publish
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          registry-url: https://registry.npmjs.org
+      - run: npm ci
+      - run: npm run check
+      - run: npm run test:mcp-stdio
+      - name: Verify tag matches package version
+        if: github.ref_type == 'tag'
+        run: |
+          VERSION=$(node -p "require('./packages/cli/package.json').version")
+          if [ "v$VERSION" != "$GITHUB_REF_NAME" ]; then
+            echo "Tag $GITHUB_REF_NAME does not match package version v$VERSION" >&2
+            exit 1
+          fi
+      - name: Publish @usermaven/wizard-schemas
+        run: npm publish --workspace @usermaven/wizard-schemas --tag "${{ inputs.dist-tag || 'latest' }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish @usermaven/wizard-core
+        run: npm publish --workspace @usermaven/wizard-core --tag "${{ inputs.dist-tag || 'latest' }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+      - name: Publish @usermaven/wizard
+        run: npm publish --workspace @usermaven/wizard --tag "${{ inputs.dist-tag || 'latest' }}"
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

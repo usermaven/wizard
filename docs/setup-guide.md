@@ -3,10 +3,13 @@
 This guide takes you from an uninstrumented project to verified Usermaven
 analytics. There are three ways to run the flow:
 
-- **Interactive guided setup (fastest)** — run `usermaven-wizard setup .` in a
-  terminal. It inspects the project, asks for your workspace details, uses the
-  baseline tracking plan (automatic page views), and walks you through
-  preview, approval, and apply in one sitting.
+- **Interactive guided setup (fastest)** — run `usermaven-wizard login` and
+  then `usermaven-wizard setup .` in a terminal. It inspects the project,
+  lets you pick your workspace from a list (details are filled in
+  automatically; skip `login` to enter them manually), uses the baseline
+  tracking plan (automatic page views), walks you through preview, approval,
+  and apply in one sitting, and can finish by creating a starter dashboard
+  in your workspace.
 - **With a coding agent** — Claude Code, Cursor, or any MCP client drives the
   wizard's tools and drafts a custom tracking plan for you. You review the
   plan and approve the file changes in your terminal.

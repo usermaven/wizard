@@ -66,14 +66,30 @@ managers. Requires Node.js 20 or newer.
 ## Prerequisites
 
 - A [Usermaven account](https://app.usermaven.com) and workspace.
-- Your workspace key and tracking host, from **Workspace settings →
-  Setup instructions** in the Usermaven app.
 - Node.js 20+ in the project you are instrumenting.
 
-The wizard never asks for, stores, or writes your workspace key. It references
-the key through an environment variable (for example
-`NEXT_PUBLIC_USERMAVEN_KEY`) and you set the value yourself in `.env.local`
-and your hosting provider. See the [deployment guide](docs/deployment.md).
+## Connect your workspace
+
+```sh
+npx @usermaven/wizard login          # email + password (2FA supported)
+npx @usermaven/wizard workspaces     # list workspaces, keys, tracking hosts
+```
+
+Signing in makes the guided setup pick your workspace from a list — name,
+tracking host, and key fingerprint are filled in automatically — and unlocks
+`starter-dashboard`, which creates a private web-analytics dashboard
+(visitors, pageviews, sessions, visitors-over-time, top pages) in your
+workspace after setup. Use `login --api-key <key>` with an organization API
+key for long-lived automation; credentials are stored privately at
+`~/.config/usermaven-wizard/credentials.json` (mode 0600) and removed with
+`logout`.
+
+Not signed in? Everything still works — the guided setup prompts for the
+workspace details from **Workspace settings → Setup instructions**, and
+generated code references the key only through an environment variable (for
+example `NEXT_PUBLIC_USERMAVEN_KEY`) whose value you set yourself in
+`.env.local` and your hosting provider. See the
+[deployment guide](docs/deployment.md).
 
 ## Use with a coding agent (recommended)
 
@@ -122,9 +138,12 @@ tracking plans. The npm package also ships a ready-made Claude Code skill at
   be rolled back from recorded before/after hashes.
 - Verification returns normalized pass/fail results, **never captured event
   payloads**.
-- The wizard sends **no telemetry**. The only network calls it ever makes are
-  the package install you approve and the optional
-  `doctor --tracking-host` reachability check you request.
+- The wizard sends **no telemetry**. Its only network calls are ones you
+  explicitly initiate: the package install you approve, the optional
+  `doctor --tracking-host` reachability check, and the Usermaven API calls
+  behind `login`, `workspaces`, and `starter-dashboard` — which carry your
+  credentials and the request bodies those commands describe, never source
+  code, inspection output, or environment values.
 
 The full rationale lives in the [threat model](docs/threat-model.md) and
 [architecture](docs/architecture.md).
@@ -146,6 +165,9 @@ The full rationale lives in the [threat model](docs/threat-model.md) and
 | `apply-lock` / `recover-lock`    | Inspect and recover an interrupted apply                                    |
 | `report <plan>`                  | Render a human-readable setup report from existing artifacts (read-only)    |
 | `doctor [path]`                  | Read-only diagnostics: Node, framework support, state, host reachability    |
+| `login` / `logout` / `whoami`    | Sign in to the Usermaven API (interactive or `--api-key`) and inspect it    |
+| `workspaces`                     | List your workspaces with public keys and tracking hosts                    |
+| `starter-dashboard`              | Create a starter web-analytics dashboard in your workspace                  |
 | `uninstall [path]`               | Detect installed Usermaven pieces and print a removal checklist (read-only) |
 | `manifest`                       | Print the machine-readable command manifest                                 |
 

@@ -54,6 +54,20 @@ import { manifest } from "./manifest.js";
 import { integerOption, parseArguments } from "./arguments.js";
 import { buildSetupReport } from "./report.js";
 import { runGuidedSetup } from "./guided.js";
+import {
+  clearCredentials,
+  credentialsPath,
+  loadCredentials,
+  saveCredentials,
+  toApiAuth,
+  type StoredCredentials,
+} from "./credentials.js";
+import {
+  DEFAULT_API_URL,
+  WorkspaceApiClient,
+  type WorkspaceSummary,
+} from "./workspace-api.js";
+import { STARTER_DASHBOARD_NAME, starterTrends } from "./starter-dashboard.js";
 
 const help = `Usermaven Wizard
 
@@ -93,6 +107,12 @@ Usage:
     [--root <path>] [--output <report.md>]
   usermaven-wizard doctor [path] [--tracking-host <https-url>] [--compact]
   usermaven-wizard uninstall [path] [--compact]
+  usermaven-wizard login [--api-url <https-url>] [--api-key <key>]
+  usermaven-wizard logout
+  usermaven-wizard whoami [--compact]
+  usermaven-wizard workspaces [--compact]
+  usermaven-wizard starter-dashboard [--workspace <id-or-name>]
+    [--name <dashboard-name>] [--compact]
   usermaven-wizard manifest [--compact]
   usermaven-wizard --help
 
@@ -246,7 +266,11 @@ async function main(): Promise<void> {
                                     "--verification-result",
                                     "--output",
                                   ]
-                                : [];
+                                : command === "login"
+                                  ? ["--api-url", "--api-key"]
+                                  : command === "starter-dashboard"
+                                    ? ["--workspace", "--name"]
+                                    : [];
   const allowedBooleans =
     command === "plan" ? ["--baseline"] : command === "setup" ? ["--json"] : [];
   const parsed = parseArguments(flags, allowedOptions, allowedBooleans);
@@ -631,11 +655,222 @@ async function main(): Promise<void> {
     process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
     return;
   }
+  if (command === "login") {
+    if (parsed.positionals.length > 0)
+      throw new Error("Login accepts no paths");
+    const baseUrl = parsed.options.get("--api-url") ?? DEFAULT_API_URL;
+    const client = new WorkspaceApiClient({ baseUrl });
+    const apiKey = parsed.options.get("--api-key");
+    let credentials: StoredCredentials;
+    if (apiKey) {
+      credentials = {
+        base_url: baseUrl,
+        auth: { kind: "api_key", api_key: apiKey },
+      };
+    } else {
+      if (!process.stdin.isTTY || !process.stdout.isTTY) {
+        throw new Error(
+          "Login requires an interactive terminal; use --api-key for automation",
+        );
+      }
+      const email = (await questionVisible("Usermaven email: ")).trim();
+      const password = await questionHidden("Password: ");
+      let result = await client.login(email, password);
+      if (result.status === "requires_2fa") {
+        const code = (
+          await questionVisible("Two-factor authentication code: ")
+        ).trim();
+        result = await client.loginTwoFactor(result.sessionToken, code);
+      }
+      credentials = {
+        base_url: baseUrl,
+        email,
+        auth: {
+          kind: "bearer",
+          access_token: result.accessToken,
+          ...(result.refreshToken
+            ? { refresh_token: result.refreshToken }
+            : {}),
+        },
+      };
+    }
+    const workspaces = await client.listWorkspaces(toApiAuth(credentials));
+    const path = await saveCredentials(credentials);
+    process.stdout.write(
+      `Signed in to ${baseUrl} (${workspaces.length} workspace${
+        workspaces.length === 1 ? "" : "s"
+      }). Credentials stored at ${path} (mode 0600).\n` +
+        (credentials.auth.kind === "bearer"
+          ? "Session tokens expire; use `usermaven-wizard login --api-key <key>` for long-lived automation.\n"
+          : ""),
+    );
+    return;
+  }
+  if (command === "logout") {
+    if (parsed.positionals.length > 0)
+      throw new Error("Logout accepts no paths");
+    await clearCredentials();
+    process.stdout.write(`Removed ${credentialsPath()}\n`);
+    return;
+  }
+  if (command === "whoami") {
+    if (parsed.positionals.length > 0)
+      throw new Error("Whoami accepts no paths");
+    const credentials = await loadCredentials();
+    if (!credentials) {
+      process.stdout.write(
+        `Not signed in. Run \`usermaven-wizard login\` (or set USERMAVEN_API_KEY).\n`,
+      );
+      process.exitCode = 1;
+      return;
+    }
+    const client = new WorkspaceApiClient({ baseUrl: credentials.base_url });
+    const workspaces = await client.listWorkspaces(toApiAuth(credentials));
+    const result = {
+      api_url: credentials.base_url,
+      auth_kind: credentials.auth.kind,
+      ...(credentials.email ? { email: credentials.email } : {}),
+      workspace_count: workspaces.length,
+    };
+    process.stdout.write(`${JSON.stringify(result, null, spacing)}\n`);
+    return;
+  }
+  if (command === "workspaces") {
+    if (parsed.positionals.length > 0)
+      throw new Error("Workspaces accepts no paths");
+    const { client, credentials } = await requireWorkspaceClient();
+    const workspaces = await client.listWorkspaces(toApiAuth(credentials));
+    process.stdout.write(`${JSON.stringify(workspaces, null, spacing)}\n`);
+    return;
+  }
+  if (command === "starter-dashboard") {
+    if (parsed.positionals.length > 0)
+      throw new Error("Starter-dashboard accepts no paths");
+    const { client, credentials } = await requireWorkspaceClient();
+    const auth = toApiAuth(credentials);
+    const workspaces = await client.listWorkspaces(auth);
+    const workspace = selectWorkspace(
+      workspaces,
+      parsed.options.get("--workspace"),
+    );
+    const dashboardName =
+      parsed.options.get("--name") ?? STARTER_DASHBOARD_NAME;
+    const existing = await client.listDashboardNames(auth, workspace.id);
+    if (existing.includes(dashboardName)) {
+      throw new Error(
+        `Workspace "${workspace.name}" already has a dashboard named "${dashboardName}"; pass --name to create another`,
+      );
+    }
+    const result = await client.createStarterDashboard(auth, workspace.id, {
+      dashboardName,
+      trends: starterTrends(),
+    });
+    process.stdout.write(
+      `${JSON.stringify(
+        {
+          workspace_id: workspace.id,
+          workspace_name: workspace.name,
+          dashboard_id: result.dashboardId,
+          dashboard_name: result.dashboardName,
+          charts_created: result.trendIds.length,
+        },
+        null,
+        spacing,
+      )}\n`,
+    );
+    return;
+  }
   if (command === undefined || command === "--help" || command === "-h") {
     process.stdout.write(`${help}\n`);
     return;
   }
   throw new Error(`Unknown command: ${command}`);
+}
+
+async function requireWorkspaceClient(): Promise<{
+  client: WorkspaceApiClient;
+  credentials: StoredCredentials;
+}> {
+  const credentials = await loadCredentials();
+  if (!credentials) {
+    throw new Error(
+      "Not signed in. Run `usermaven-wizard login` (or set USERMAVEN_API_KEY).",
+    );
+  }
+  return {
+    client: new WorkspaceApiClient({ baseUrl: credentials.base_url }),
+    credentials,
+  };
+}
+
+function selectWorkspace(
+  workspaces: WorkspaceSummary[],
+  selector: string | undefined,
+): WorkspaceSummary {
+  if (workspaces.length === 0)
+    throw new Error("The signed-in account has no workspaces");
+  if (!selector) {
+    if (workspaces.length === 1) return workspaces[0]!;
+    throw new Error(
+      `Multiple workspaces found; pass --workspace <id-or-name>. Available: ${workspaces
+        .map((workspace) => workspace.name)
+        .join(", ")}`,
+    );
+  }
+  const match = workspaces.find(
+    (workspace) =>
+      workspace.id === selector ||
+      workspace.identifier === selector ||
+      workspace.name === selector,
+  );
+  if (!match) throw new Error(`No workspace matches "${selector}"`);
+  return match;
+}
+
+async function questionVisible(query: string): Promise<string> {
+  const readline = createInterface({
+    input: process.stdin,
+    output: process.stdout,
+  });
+  try {
+    return await readline.question(query);
+  } finally {
+    readline.close();
+  }
+}
+
+/**
+ * Reads one line from stdin with the terminal in raw mode so nothing —
+ * neither the kernel nor readline — echoes the typed characters.
+ */
+function questionHidden(query: string): Promise<string> {
+  process.stdout.write(query);
+  return new Promise((resolvePromise, rejectPromise) => {
+    const stdin = process.stdin;
+    const wasRaw = stdin.isRaw === true;
+    stdin.setRawMode?.(true);
+    stdin.resume();
+    let value = "";
+    const finish = (error?: Error) => {
+      stdin.off("data", onData);
+      stdin.setRawMode?.(wasRaw);
+      stdin.pause();
+      process.stdout.write("\n");
+      if (error) rejectPromise(error);
+      else resolvePromise(value);
+    };
+    const onData = (chunk: Buffer) => {
+      for (const character of chunk.toString("utf8")) {
+        if (character === "\r" || character === "\n") return finish();
+        if (character === "\u0003" || character === "\u0004")
+          return finish(new Error("Login aborted"));
+        if (character === "\u007f" || character === "\b")
+          value = value.slice(0, -1);
+        else value += character;
+      }
+    };
+    stdin.on("data", onData);
+  });
 }
 
 main().catch((error: unknown) => {

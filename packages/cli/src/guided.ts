@@ -18,6 +18,14 @@ import {
 import type { SetupPlan } from "@usermaven/wizard-schemas";
 
 import { buildSetupReport } from "./report.js";
+import { loadCredentials, toApiAuth } from "./credentials.js";
+import {
+  fingerprintWorkspaceKey,
+  WorkspaceApiClient,
+  type ApiAuth,
+  type WorkspaceSummary,
+} from "./workspace-api.js";
+import { STARTER_DASHBOARD_NAME, starterTrends } from "./starter-dashboard.js";
 
 const SETUP_SUPPORTED_FRAMEWORKS = new Set([
   "next-app-router",
@@ -132,15 +140,67 @@ export async function runGuidedSetup(
       );
     };
 
-    write("\nYour workspace details (Usermaven → Workspace settings):\n");
-    const displayName = await promptWithDefault(prompter, "Workspace name");
-    const region = await promptWithDefault(prompter, "Region (us/eu)", "us");
-    const trackingHost = await promptWithDefault(
-      prompter,
-      "Tracking host",
-      DEFAULT_TRACKING_HOST,
-    );
-    const fingerprint = await promptFingerprint(prompter, write);
+    let selectedWorkspace: WorkspaceSummary | null = null;
+    let workspaceClient: WorkspaceApiClient | null = null;
+    let workspaceAuth: ApiAuth | null = null;
+    const credentials = await loadCredentials();
+    if (credentials) {
+      try {
+        const client = new WorkspaceApiClient({
+          baseUrl: credentials.base_url,
+        });
+        const auth = toApiAuth(credentials);
+        const workspaces = await client.listWorkspaces(auth);
+        if (workspaces.length > 0) {
+          const choices = workspaces.slice(0, 9);
+          write("\nSigned in to Usermaven — choose a workspace:\n");
+          for (const [index, workspace] of choices.entries()) {
+            write(
+              `  ${index + 1}. ${workspace.name} (${workspace.identifier})\n`,
+            );
+          }
+          write("  0. Enter workspace details manually\n");
+          const answer = (await prompter.question("Workspace [1]: ")).trim();
+          const choice = answer === "" ? 1 : Number.parseInt(answer, 10);
+          if (
+            Number.isInteger(choice) &&
+            choice >= 1 &&
+            choice <= choices.length
+          ) {
+            selectedWorkspace = choices[choice - 1]!;
+            workspaceClient = client;
+            workspaceAuth = auth;
+          }
+        }
+      } catch {
+        write(
+          "Could not load your workspaces (session may have expired); continuing with manual entry.\n",
+        );
+      }
+    }
+
+    let displayName: string;
+    let region = "us";
+    let trackingHost: string;
+    let fingerprint: string;
+    if (selectedWorkspace) {
+      displayName = selectedWorkspace.name;
+      trackingHost = selectedWorkspace.trackingHost;
+      fingerprint = fingerprintWorkspaceKey(selectedWorkspace.identifier);
+      write(
+        `Using workspace "${selectedWorkspace.name}" (tracking host ${trackingHost}).\n`,
+      );
+    } else {
+      write("\nYour workspace details (Usermaven → Workspace settings):\n");
+      displayName = await promptWithDefault(prompter, "Workspace name");
+      region = await promptWithDefault(prompter, "Region (us/eu)", "us");
+      trackingHost = await promptWithDefault(
+        prompter,
+        "Tracking host",
+        DEFAULT_TRACKING_HOST,
+      );
+      fingerprint = await promptFingerprint(prompter, write);
+    }
 
     const trackingPlan = createBaselineTrackingPlan({ inspection });
     await writePrivateArtifact(trackingPlanPath, trackingPlan);
@@ -252,11 +312,52 @@ export async function runGuidedSetup(
       plan.workspace.tracking_host_env_var ?? "USERMAVEN_TRACKING_HOST";
     write(
       `\nDone. Before starting the app, set your environment values in .env.local:\n` +
-        `  ${keyEnvVar}=<your workspace public key>\n` +
+        `  ${keyEnvVar}=${selectedWorkspace?.identifier ?? "<your workspace public key>"}\n` +
         `  ${hostEnvVar}=${plan.workspace.tracking_host}\n\n` +
         "The wizard never writes environment values; add them yourself and keep\n" +
         "populated env files out of version control.\n",
     );
+
+    if (selectedWorkspace && workspaceClient && workspaceAuth) {
+      const dashboardAnswer = (
+        await prompter.question(
+          `Create a "${STARTER_DASHBOARD_NAME}" dashboard in "${selectedWorkspace.name}"? (y/N) `,
+        )
+      )
+        .trim()
+        .toLowerCase();
+      if (dashboardAnswer === "y" || dashboardAnswer === "yes") {
+        try {
+          const existing = await workspaceClient.listDashboardNames(
+            workspaceAuth,
+            selectedWorkspace.id,
+          );
+          if (existing.includes(STARTER_DASHBOARD_NAME)) {
+            write(
+              `A "${STARTER_DASHBOARD_NAME}" dashboard already exists; skipping.\n`,
+            );
+          } else {
+            const created = await workspaceClient.createStarterDashboard(
+              workspaceAuth,
+              selectedWorkspace.id,
+              {
+                dashboardName: STARTER_DASHBOARD_NAME,
+                trends: starterTrends(),
+              },
+            );
+            write(
+              `Created dashboard "${created.dashboardName}" with ${created.trendIds.length} charts.\n`,
+            );
+          }
+        } catch (error) {
+          write(
+            `Could not create the starter dashboard (${
+              error instanceof Error ? error.message : "unexpected failure"
+            }); you can retry later with \`usermaven-wizard starter-dashboard\`.\n`,
+          );
+        }
+      }
+    }
 
     const reportAnswer = (
       await prompter.question(
