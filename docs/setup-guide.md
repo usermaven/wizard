@@ -41,10 +41,9 @@ files, and never writes a file you did not explicitly approve.
    ```
 
 > [!NOTE]
-> Until `@usermaven/wizard` is published to npm, replace `usermaven-wizard`
-> in the commands below with `node /path/to/wizard/packages/cli/dist/cli.js`
-> after building the repository (see
-> [Run from source](../README.md#run-from-source)).
+> `usermaven-wizard` in the commands below assumes a global install
+> (`npm install -g @usermaven/wizard`); with `npx`, prefix each command as
+> `npx @usermaven/wizard <command>` instead.
 
 ## Option A: setup with a coding agent
 

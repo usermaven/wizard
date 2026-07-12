@@ -20,12 +20,6 @@ applies them after your typed approval, and can leave a
 `usermaven-setup-report.md` behind. In non-interactive contexts (agents, CI)
 the same command returns a machine-readable next action.
 
-> [!IMPORTANT]
-> `@usermaven/wizard` has not been published to npm yet. Until it is, run the
-> wizard from source — see [Run from source](#run-from-source). The `npx`
-> commands in this README show the invocation that will work after the first
-> release.
-
 ## How it works
 
 The wizard walks one loop from empty project to verified analytics:

@@ -60,10 +60,10 @@ should discover exactly `inspect_project`, `checkpoint_workflow`,
 `preview_changes`, `apply_changes`, `prepare_verification`, `verify_setup`,
 and `doctor`.
 
-After the npm package is published, the equivalent command will be:
+With the published npm package, the equivalent command is:
 
 ```sh
-npx -y -p @usermaven/wizard@0.13.0 usermaven-wizard-mcp \
+npx -y -p @usermaven/wizard@0.13.1 usermaven-wizard-mcp \
   --root /absolute/path/to/project
 ```
 

@@ -40,5 +40,3 @@ local `npm publish` will refuse.
 
 - Verify: `npm view @usermaven/wizard version` and
   `npx @usermaven/wizard@latest --help`.
-- Remove the "not yet published" callouts from `README.md` and
-  `docs/setup-guide.md`.

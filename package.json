@@ -1,6 +1,6 @@
 {
   "name": "usermaven-wizard-workspace",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": true,
   "description": "Local-first Usermaven installation, instrumentation, and verification tooling.",
   "license": "MIT",
