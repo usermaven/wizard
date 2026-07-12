@@ -1,162 +1,187 @@
-# Usermaven Wizard
+# Usermaven Wizard ✨
 
-Usermaven Wizard is a local-first toolkit for installing Usermaven, designing a
-tracking plan, applying approved instrumentation changes, and verifying that the
-setup works. It is designed for both people and coding agents.
+Add [Usermaven](https://usermaven.com) product analytics to your app in
+minutes. The wizard inspects your project, proposes a tracking plan tailored to
+your codebase, shows you every change before it is written, and verifies that
+events actually reach your workspace — all from one CLI that also works as an
+MCP server for coding agents like Claude Code and Cursor.
+
+```sh
+npx @usermaven/wizard setup .
+```
 
 > [!IMPORTANT]
-> This repository is under active development. Versioned contracts,
-> machine-readable manifests, bounded project inspection, AI-generated tracking
-> plans, approval-ready setup plans, change previews,
-> approval-bound repository application, and a local MCP server are implemented.
-> Marker-bound static, runtime, transport, and workspace-receipt verification is
-> also implemented, along with digest-bound checkpoint/resume recovery.
+> `@usermaven/wizard` has not been published to npm yet. Until it is, run the
+> wizard from source — see [Run from source](#run-from-source). The `npx`
+> commands in this README show the invocation that will work after the first
+> release.
 
-## Design promises
+## How it works
 
-- Source code and local environment values stay on the developer's machine by
-  default.
-- Inspection and planning never mutate the repository.
-- Every package installation and file change requires an exact, short-lived,
-  interactive approval.
-- Verification returns normalized results, never captured event payloads.
-- Repository content is untrusted data, not instructions for the wizard or agent.
-- Remote Usermaven MCP handles authenticated workspace operations; the local
-  wizard handles source-code inspection and edits.
+The wizard walks one loop from empty project to verified analytics:
+
+1. **Inspect** — detects your framework, package manager, and any existing
+   analytics SDKs. Read-only.
+2. **Plan** — turns your business context into a reviewable tracking plan of
+   events and properties. Read-only.
+3. **Preview** — renders the exact package installs and file diffs the setup
+   would make, without touching anything.
+4. **Approve** — you confirm the exact operations in an interactive terminal.
+   Approvals are short-lived, bound to your project and plan, and usable once.
+5. **Apply** — executes only the operations you approved: installs
+   `@usermaven/sdk-js`, generates a small client module wired to
+   environment variables, and adds the instrumentation from your plan.
+6. **Verify** — independently checks the files on disk and confirms
+   marker-bound events arrive at the collector and your workspace.
+
+Progress is checkpointed along the way, so an interrupted setup resumes with
+`usermaven-wizard resume` instead of starting over. See the
+[setup guide](docs/setup-guide.md) for the full walkthrough.
+
+## Supported frameworks
+
+| Framework                                 | Detection | Generated integration                        |
+| ----------------------------------------- | --------- | -------------------------------------------- |
+| Next.js (App Router, incl. `src/app`)     | ✅        | `app/usermaven-provider.tsx` client provider |
+| Next.js (Pages Router, incl. `src/pages`) | ✅        | `lib/usermaven-client.ts` client module      |
+| React + Vite                              | ✅        | `src/usermaven.ts` client module             |
+| React (other bundlers)                    | ✅        | `src/usermaven.ts` client module             |
+| Node.js                                   | ✅        | `src/usermaven.ts` client module             |
+
+Astro, Nuxt, Remix, Svelte/SvelteKit, and Vue are detected and reported as
+not yet supported. npm, pnpm, yarn, and bun are all supported package
+managers. Requires Node.js 20 or newer.
+
+## Prerequisites
+
+- A [Usermaven account](https://app.usermaven.com) and workspace.
+- Your workspace key and tracking host, from **Workspace settings →
+  Setup instructions** in the Usermaven app.
+- Node.js 20+ in the project you are instrumenting.
+
+The wizard never asks for, stores, or writes your workspace key. It references
+the key through an environment variable (for example
+`NEXT_PUBLIC_USERMAVEN_KEY`) and you set the value yourself in `.env.local`
+and your hosting provider. See the [deployment guide](docs/deployment.md).
+
+## Use with a coding agent (recommended)
+
+The wizard ships a local MCP server that exposes the whole flow — inspection,
+planning, preview, approval-bound apply, and verification — as tools your
+coding agent can drive while your source code stays on your machine.
+
+```json
+{
+  "mcpServers": {
+    "usermaven-wizard": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "--package",
+        "@usermaven/wizard",
+        "usermaven-wizard-mcp",
+        "--root",
+        "/absolute/path/to/project"
+      ]
+    }
+  }
+}
+```
+
+Then ask your agent: _“Set up Usermaven in this project using the
+usermaven-wizard tools. Start with `inspect_project`, checkpoint after each
+phase, and follow the returned next actions.”_ File changes still require your
+interactive approval in a terminal —
+the agent cannot approve on your behalf. See the
+[local MCP guide](docs/local-mcp.md) for Claude Code and Cursor specifics, and
+the [AI planning playbook](docs/ai-tracking-plans.md) for how agents generate
+tracking plans.
+
+## What the wizard will and won't do
+
+- Inspection and planning **never modify your repository**, and their output
+  contains normalized tokens and file locations — not source snippets,
+  property values, or secrets.
+- Your source code and environment values **stay on your machine** by default.
+- Every package install and file change requires an **exact, short-lived,
+  interactive approval**; nothing is ever applied silently.
+- The wizard **never touches** `.env*` files, lockfiles, `.git`, CI config, or
+  anything outside the operations you approved, and every applied change can
+  be rolled back from recorded before/after hashes.
+- Verification returns normalized pass/fail results, **never captured event
+  payloads**.
+
+The full rationale lives in the [threat model](docs/threat-model.md) and
+[architecture](docs/architecture.md).
+
+## Commands
+
+| Command                          | What it does                                                          |
+| -------------------------------- | --------------------------------------------------------------------- |
+| `setup [path]`                   | Start a guided setup workflow and return the next action              |
+| `inspect [path]`                 | Detect framework, package manager, and existing analytics (read-only) |
+| `plan [path]`                    | Validate and stamp an AI-proposed tracking plan (read-only)           |
+| `setup-plan [path]`              | Generate the exact install/file operations for your workspace         |
+| `preview <plan>`                 | Render every operation and diff without applying anything             |
+| `approve <plan>`                 | Interactively approve exact operations (short-lived, single-use)      |
+| `apply <plan>`                   | Execute only the approved operations                                  |
+| `verification-session <plan>`    | Open a short-lived, marker-bound verification session                 |
+| `verify <plan>`                  | Check local files plus runtime, transport, and workspace evidence     |
+| `checkpoint` / `resume` / `next` | Save progress and get the single next action after an interruption    |
+| `apply-lock` / `recover-lock`    | Inspect and recover an interrupted apply                              |
+| `manifest`                       | Print the machine-readable command manifest                           |
+
+Run `usermaven-wizard --help` for full flags. Read-only commands accept
+`--compact` for single-line JSON.
+
+## Documentation
+
+- [Setup guide](docs/setup-guide.md) — end-to-end walkthrough, with and
+  without a coding agent
+- [Deployment guide](docs/deployment.md) — environment variables in Vercel,
+  Netlify, Docker, and CI; verifying production
+- [Troubleshooting](docs/troubleshooting.md) — expired approvals, failed
+  verification, stuck applies, events not arriving
+- [Local MCP server](docs/local-mcp.md) — client configuration, security
+  boundaries
+- [AI tracking plans](docs/ai-tracking-plans.md) — how agents propose events
+  and instrumentation
+- [Apply playbook](docs/apply-playbook.md) ·
+  [Verification playbook](docs/verification-playbook.md) ·
+  [Workflow recovery](docs/workflow-recovery.md)
+- [Architecture](docs/architecture.md) · [Contracts](docs/contracts.md) ·
+  [Threat model](docs/threat-model.md)
 
 ## Packages
 
-- `@usermaven/wizard-schemas`: versioned Zod contracts for tracking plans, setup
-  plans, project inspections, verification results, agent NDJSON events, and the
-  command manifest.
-- `@usermaven/wizard-core`: reusable local inspection, planning, approval, and
-  application engine.
-- `@usermaven/wizard`: the CLI and local MCP server.
+- [`@usermaven/wizard`](packages/cli) — the CLI and local MCP server.
+- [`@usermaven/wizard-core`](packages/core) — the reusable inspection,
+  planning, approval, and application engine.
+- [`@usermaven/wizard-schemas`](packages/schemas) — versioned Zod contracts
+  for every artifact the wizard produces.
 
-## Inspect a project
-
-```sh
-npx @usermaven/wizard inspect .
-```
-
-Inspection detects supported frameworks, the package manager, analytics SDK
-dependencies, and recognized instrumentation calls. Its JSON output contains
-normalized tokens and locations—not source snippets, property values, secrets,
-or event bodies.
-
-## Generate an AI tracking plan
+## Run from source
 
 ```sh
-npx @usermaven/wizard plan . \
-  --business-context ./business-context.json \
-  --ai-proposal ./ai-proposal.json > tracking-plan.json
+git clone https://github.com/usermaven/wizard.git
+cd wizard
+npm install
+npm run build
+node packages/cli/dist/cli.js setup /absolute/path/to/your/project
 ```
 
-In the MCP workflow, the client model creates the proposal from explicit
-business context, normalized inspection, and any source access separately
-authorized in the coding-agent host; the wizard validates and stamps it. It can
-propose custom events and properties. Every AI item requires review;
-revenue events additionally require explicit revenue context, standard revenue
-properties, and server-capable authority. See the [AI planning
-playbook](docs/ai-tracking-plans.md).
-
-## Generate and preview setup operations
-
-```sh
-usermaven-wizard setup-plan . \
-  --workspace-name "Example" \
-  --region us \
-  --key-fingerprint sha256:example \
-  --tracking-host https://events.example.com \
-  --tracking-plan ./tracking-plan.json \
-  --ai-instrumentation ./ai-instrumentation.json
-
-usermaven-wizard preview ./setup-plan.json
-```
-
-Setup generation references the public key through a framework-specific
-environment-variable name and never accepts its value. Source-aware AI edits are
-bound to exact tracking items and become approval-required file operations.
-Previewing renders them without installing packages, writing files, or running
-commands. The exact plan is also stored privately by digest, so subsequent CLI
-and MCP phases can use `--plan-digest` / `plan_digest` without echoing the full
-source-bearing artifact through model context.
-
-## Approve and apply exact operations
-
-```sh
-usermaven-wizard approve ./setup-plan.json \
-  --operations install-sdk,create-integration \
-  --root /absolute/path/to/project \
-  --output ./approval.json
-
-usermaven-wizard apply ./setup-plan.json \
-  --approval ./approval.json \
-  --root /absolute/path/to/project
-```
-
-Approval requires an interactive terminal. It is bound to the plan digest,
-canonical repository root, exact operation IDs, and an expiry, authenticated in
-a private local registry, and consumed once. MCP application uses only the
-registered approval ID. See the [application playbook](docs/apply-playbook.md).
-
-## Verify the applied setup
-
-```sh
-usermaven-wizard verification-session ./setup-plan.json \
-  --environment staging > verification-session.json
-
-usermaven-wizard verify ./setup-plan.json \
-  --session ./verification-session.json \
-  --evidence ./verification-evidence.json \
-  --trusted-workspace-keys ./trusted-workspace-keys.json \
-  --root /absolute/path/to/project
-```
-
-Verification independently checks exact local file state and combines
-short-lived marker-bound evidence from browser/E2E observation, collector
-responses, and the selected workspace. See the [verification
-playbook](docs/verification-playbook.md).
-Workspace receipts must carry a trusted-key Ed25519 attestation; normalized
-caller-supplied claims alone cannot produce a passing result.
-
-## Checkpoint and resume
-
-```sh
-usermaven-wizard checkpoint . --step inspection_completed
-usermaven-wizard resume . --workflow-id workflow_example-1234
-```
-
-Workflow state contains only repository binding, artifact paths/digests, and
-setup progress. Resume validates stale files, expired approvals/sessions, and
-interrupted apply state before returning one next action; it never runs an agent
-or replays an approval. See the [recovery
-playbook](docs/workflow-recovery.md).
-
-## Run the local MCP server
-
-```sh
-node packages/cli/dist/mcp.js --root /absolute/path/to/project
-```
-
-It exposes inspection, tracking-plan, setup-plan, preview, approval-bound
-application, checkpoint/resume, and four-layer verification tools over stdio. See the
-[local MCP development playbook](docs/local-mcp.md) for client configuration,
-security boundaries, and troubleshooting.
+The MCP server entry point is `node packages/cli/dist/mcp.js --root
+/absolute/path/to/your/project`.
 
 ## Development
 
-Requires Node.js 20 or newer.
-
 ```sh
 npm install
-npm run check
-npm run --workspace @usermaven/wizard build
-node packages/cli/dist/cli.js manifest
+npm run check   # format, typecheck, tests, build
 node packages/cli/dist/cli.js inspect fixtures/react-vite
 ```
 
-Start with [the architecture](docs/architecture.md),
+Start with the [architecture](docs/architecture.md),
 [contracts](docs/contracts.md), and [threat model](docs/threat-model.md). See
 [CONTRIBUTING.md](CONTRIBUTING.md) before proposing changes.
 

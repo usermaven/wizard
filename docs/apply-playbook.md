@@ -26,7 +26,7 @@ Run this in a real terminal, not through an unattended agent process:
 
 ```sh
 usermaven-wizard approve setup-plan.json \
-  --operations install-sdk,create-integration \
+  --operations install-usermaven-sdk,create-usermaven-client \
   --root /path/to/project \
   --ttl-minutes 15 \
   --output approval.json

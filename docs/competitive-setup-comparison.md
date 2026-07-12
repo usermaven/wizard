@@ -2,7 +2,7 @@
 
 Reviewed against public product material on 2026-07-11.
 
-| Capability                               | Usermaven Wizard 0.10                                         | Amplitude Wizard                                                                 | PostHog Wizard / MCP                                                           |
+| Capability                               | Usermaven Wizard 0.11                                         | Amplitude Wizard                                                                 | PostHog Wizard / MCP                                                           |
 | ---------------------------------------- | ------------------------------------------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------------------ |
 | Detect frameworks and existing analytics | Implemented, bounded and normalized                           | Implemented across a broad framework matrix                                      | Implemented across 16+ frameworks                                              |
 | Propose a tracking plan                  | Agent-generated custom events/properties with strict review   | AI proposes events from the codebase                                             | AI wizard and program-specific audits                                          |

@@ -10,6 +10,15 @@
   },
   "bugs": "https://github.com/usermaven/wizard/issues",
   "homepage": "https://github.com/usermaven/wizard#readme",
+  "keywords": [
+    "usermaven",
+    "analytics",
+    "instrumentation",
+    "tracking-plan"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

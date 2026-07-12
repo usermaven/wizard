@@ -69,8 +69,8 @@ Usage:
   usermaven-wizard verification-session [<setup-plan.json> | --plan-digest <digest>]
     --environment <name> [--ttl-minutes <1-60>] [--compact]
   usermaven-wizard verify [<setup-plan.json> | --plan-digest <digest>]
-    --session <session.json>
-    --evidence <evidence.json> [--root <path>] [--compact]
+    --session <session.json> --evidence <evidence.json>
+    [--trusted-workspace-keys <keys.json>] [--root <path>] [--compact]
   usermaven-wizard checkpoint [path] --step <workflow-step>
     [--workflow-id <id>] [--tracking-plan <path>] [--setup-plan <path>]
     [--approval <path>] [--apply-result <path>] [--session <path>]

@@ -68,6 +68,31 @@ npx -y -p @usermaven/wizard@0.11.0 usermaven-wizard-mcp \
 Pin an exact version in automated or team configuration. Do not use an unpinned
 `latest` package for repository-accessing tooling.
 
+## Claude Code
+
+From the project you are instrumenting:
+
+```sh
+claude mcp add usermaven-wizard -- node \
+  /absolute/path/to/wizard/packages/cli/dist/mcp.js \
+  --root "$(pwd)"
+```
+
+Or add the [generic configuration](#generic-client-configuration) block to
+`.mcp.json` at the project root to share the server with your team. Run
+`/mcp` inside Claude Code to confirm the nine tools are listed, then ask:
+
+> Set up Usermaven in this project using the usermaven-wizard tools. Start
+> with `inspect_project`, checkpoint after each phase, and follow the
+> returned next actions.
+
+## Cursor
+
+Add the [generic configuration](#generic-client-configuration) block to
+`.cursor/mcp.json` in the project (or `~/.cursor/mcp.json` globally), then
+enable the server under **Settings → MCP** and use the same kickoff prompt in
+Agent mode.
+
 ## Development verification
 
 ```sh
