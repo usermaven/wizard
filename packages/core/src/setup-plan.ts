@@ -253,7 +253,7 @@ async function deterministicWiringOperation(
     if (!entry)
       throw new Error("React/Vite setup requires a src/main entry file");
     const before = await readFile(join(root, entry.path), "utf8");
-    if (/^["']\.\/usermaven["'];?$/mu.test(before)) return null;
+    if (/^\s*import\s+["']\.\/usermaven["']/mu.test(before)) return null;
     const after = `import "./usermaven";\n${before}`;
     return editOperation(
       "wire-usermaven-entry",

@@ -880,6 +880,32 @@ describe("generateSetupPlan with a baseline tracking plan", () => {
     ).toBe(false);
   });
 
+  it("omits the wiring operation when the entry point already imports the client", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-baseline-rewire-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    const entryPath = join(root, "src", "main.jsx");
+    await writeFile(
+      entryPath,
+      `import "./usermaven";\n${await readFile(entryPath, "utf8")}`,
+    );
+    const baseline = createBaselineTrackingPlan(
+      { inspection: await inspectProject(root) },
+      options,
+    );
+
+    const plan = await generateSetupPlan(
+      { projectRoot: root, workspace, trackingPlan: baseline },
+      options,
+    );
+
+    expect(
+      plan.operations.some(
+        (operation) => operation.id === "wire-usermaven-entry",
+      ),
+    ).toBe(false);
+  });
+
   it("rejects a baseline plan combined with an instrumentation proposal", async () => {
     const root = await mkdtemp(join(tmpdir(), "wizard-baseline-reject-"));
     temporaryRoots.push(root);
