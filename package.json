@@ -22,10 +22,10 @@
     "check": "npm run format:check && npm run typecheck && npm test && npm run build"
   },
   "devDependencies": {
-    "@types/node": "20.19.43",
+    "@types/node": "26.1.1",
     "prettier": "3.9.5",
     "tsup": "8.5.1",
-    "typescript": "6.0.3",
+    "typescript": "7.0.2",
     "vitest": "4.1.10"
   }
 }
