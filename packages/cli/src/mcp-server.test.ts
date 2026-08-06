@@ -373,7 +373,7 @@ describe("local MCP server", () => {
           }),
         ]),
       );
-      expect(preview.summary.mutations).toBe(4);
+      expect(preview.summary.mutations).toBe(5);
       expect(JSON.stringify({ plan, preview })).not.toContain(
         "actual-workspace-key",
       );
