@@ -22,6 +22,14 @@ import { inspectProject } from "./inspector.js";
 import { validateSingleFileUnifiedDiff } from "./diff-validation.js";
 
 const SDK_VERSION_RANGE = "^1.5.15";
+const MAX_GITIGNORE_BYTES = 5_000_000;
+const USERMAVEN_GITIGNORE_ENTRY = ".usermaven/";
+const USERMAVEN_GITIGNORE_PATTERNS = new Set([
+  ".usermaven",
+  ".usermaven/",
+  "/.usermaven",
+  "/.usermaven/",
+]);
 
 function boundedId(prefix: string, value: string): string {
   const candidate = `${prefix}${value}`;
@@ -328,6 +336,58 @@ async function pathExists(path: string): Promise<boolean> {
   }
 }
 
+function ignoresUsermaven(content: string): boolean {
+  return content
+    .split(/\r?\n/u)
+    .some((line) => USERMAVEN_GITIGNORE_PATTERNS.has(line.trim()));
+}
+
+async function usermavenGitignoreOperation(
+  root: string,
+): Promise<SetupOperation | null> {
+  const path = ".gitignore";
+  const target = join(root, path);
+  let item;
+  try {
+    item = await lstat(target);
+  } catch (error) {
+    if ((error as NodeJS.ErrnoException).code !== "ENOENT") throw error;
+    return {
+      id: "ensure-usermaven-gitignore",
+      type: "create_file",
+      summary: "Exclude private Usermaven state from version control",
+      path,
+      content: `${USERMAVEN_GITIGNORE_ENTRY}\n`,
+      requires_approval: true,
+    };
+  }
+
+  if (item.isSymbolicLink() || !item.isFile()) {
+    throw new Error("The project .gitignore must be a regular file");
+  }
+  if (item.size > MAX_GITIGNORE_BYTES) {
+    throw new Error("The project .gitignore exceeds the 5 MB safety limit");
+  }
+  const beforeBuffer = await readFile(target);
+  const before = beforeBuffer.toString("utf8");
+  if (ignoresUsermaven(before)) return null;
+
+  const newline = before.includes("\r\n") ? "\r\n" : "\n";
+  const separator = before.length > 0 && !before.endsWith("\n") ? newline : "";
+  const after = `${before}${separator}${USERMAVEN_GITIGNORE_ENTRY}${newline}`;
+  const beforeHash = `sha256:${createHash("sha256")
+    .update(beforeBuffer)
+    .digest("hex")}`;
+  return editOperation(
+    "ensure-usermaven-gitignore",
+    "Exclude private Usermaven state from version control",
+    path,
+    beforeHash,
+    before,
+    after,
+  );
+}
+
 function buildCommand(
   packageManager: ProjectInspection["project"]["package_manager"],
 ): string | null {
@@ -486,6 +546,9 @@ export async function generateSetupPlan(
       occurrence.provider === "usermaven" && occurrence.kind === "initialize",
   );
   const target = integrationTarget(inspection);
+
+  const gitignore = await usermavenGitignoreOperation(root);
+  if (gitignore) operations.push(gitignore);
 
   if (!hasSdk) {
     operations.push({

@@ -5,7 +5,7 @@ import { PassThrough } from "node:stream";
 
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { runGuidedSetup } from "./guided.js";
+import { gitignoreRecoveryInstruction, runGuidedSetup } from "./guided.js";
 
 const temporaryRoots: string[] = [];
 let previousConfigHome: string | undefined;
@@ -69,6 +69,35 @@ function io(answers: string[]) {
     transcript: () => transcript,
   };
 }
+
+describe("gitignoreRecoveryInstruction", () => {
+  const gitignoreOperation = {
+    operation_id: "ensure-usermaven-gitignore",
+    type: "create_file" as const,
+    summary: "Exclude private Usermaven state from version control",
+  };
+
+  it.each(["failed", "rolled_back"] as const)(
+    "returns an instruction for a %s gitignore operation",
+    (outcome) => {
+      const instruction = gitignoreRecoveryInstruction({
+        operations: [{ ...gitignoreOperation, outcome }],
+      });
+
+      expect(instruction).toContain("Add .usermaven/");
+      expect(instruction).toContain(".gitignore");
+    },
+  );
+
+  it("returns null when the gitignore update needs no recovery", () => {
+    expect(gitignoreRecoveryInstruction({ operations: [] })).toBeNull();
+    expect(
+      gitignoreRecoveryInstruction({
+        operations: [{ ...gitignoreOperation, outcome: "applied" }],
+      }),
+    ).toBeNull();
+  });
+});
 
 describe("runGuidedSetup", () => {
   it("stops before applying when the typed approval does not match", async () => {
