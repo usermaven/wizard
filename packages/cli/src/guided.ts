@@ -15,7 +15,7 @@ import {
   storeChangeApproval,
   storeSetupPlanArtifact,
 } from "@usermaven/wizard-core";
-import type { SetupPlan } from "@usermaven/wizard-schemas";
+import type { ApplyResult, SetupPlan } from "@usermaven/wizard-schemas";
 
 import { buildSetupReport } from "./report.js";
 import { loadCredentials, toApiAuth } from "./credentials.js";
@@ -59,6 +59,21 @@ function summarizeOperations(plan: SetupPlan): string {
         `  - [${operation.requires_approval ? "needs approval" : "manual"}] ${operation.id}: ${operation.summary}`,
     )
     .join("\n");
+}
+
+export function gitignoreRecoveryInstruction(
+  applyResult: Pick<ApplyResult, "operations">,
+): string | null {
+  const operation = applyResult.operations.find(
+    (result) => result.operation_id === "ensure-usermaven-gitignore",
+  );
+  if (operation?.outcome !== "failed" && operation?.outcome !== "rolled_back") {
+    return null;
+  }
+  return (
+    "The .gitignore update was not retained. Add .usermaven/ to your " +
+    "project's .gitignore before committing changes."
+  );
 }
 
 async function promptWithDefault(
@@ -300,6 +315,8 @@ export async function runGuidedSetup(
     });
     write(`Apply outcome: ${applyResult.outcome}\n`);
     if (applyResult.outcome !== "succeeded") {
+      const recoveryInstruction = gitignoreRecoveryInstruction(applyResult);
+      if (recoveryInstruction) write(`${recoveryInstruction}\n`);
       write(
         "Review the operations output above and run `usermaven-wizard doctor` before retrying.\n",
       );

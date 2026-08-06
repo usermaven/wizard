@@ -382,6 +382,7 @@ export async function emitLinkCreated() {
     expect(setupPlanSchema.safeParse(plan).success).toBe(true);
     expect(plan.workspace.key_env_var).toBe("VITE_USERMAVEN_KEY");
     expect(plan.operations.map((operation) => operation.type)).toEqual([
+      "create_file",
       "install_package",
       "create_file",
       "edit_file",
@@ -390,17 +391,27 @@ export async function emitLinkCreated() {
       "run_check",
     ]);
     expect(
-      plan.operations.find((operation) => operation.type === "create_file"),
+      plan.operations.find(
+        (operation) => operation.id === "create-usermaven-client",
+      ),
     ).toMatchObject({
       path: "src/usermaven.ts",
       requires_approval: true,
+    });
+    const gitignore = plan.operations.find(
+      (operation) => operation.id === "ensure-usermaven-gitignore",
+    );
+    expect(gitignore).toMatchObject({
+      type: "create_file",
+      path: ".gitignore",
+      content: ".usermaven/\n",
     });
     const serialized = JSON.stringify(plan);
     expect(serialized).toContain("VITE_USERMAVEN_KEY");
     expect(serialized).not.toContain("actual-workspace-key");
     expect(
       plan.operations.filter((operation) => operation.requires_approval),
-    ).toHaveLength(5);
+    ).toHaveLength(6);
     expect(plan.instrumentation?.generated_by.model).toBe("test-coding-model");
     expect(plan.instrumentation?.coverage).toEqual([
       expect.objectContaining({
@@ -473,7 +484,7 @@ export async function emitLinkCreated() {
       options,
     );
     const create = plan.operations.find(
-      (operation) => operation.type === "create_file",
+      (operation) => operation.id === "create-usermaven-client",
     );
 
     expect(plan.workspace.key_env_var).toBe("NEXT_PUBLIC_USERMAVEN_KEY");
@@ -828,16 +839,20 @@ describe("previewChanges", () => {
     const preview = previewChanges(plan);
 
     expect(preview.summary).toEqual({
-      total: 6,
-      mutations: 4,
+      total: 7,
+      mutations: 5,
       manual_steps: 1,
       checks: 1,
     });
-    expect(preview.items[0]?.preview).toBe(
-      "npm install @usermaven/sdk-js@^1.5.15",
-    );
     expect(
-      preview.items.find((item) => item.type === "create_file")?.preview,
+      preview.items.find(
+        (item) => item.operation_id === "install-usermaven-sdk",
+      )?.preview,
+    ).toBe("npm install @usermaven/sdk-js@^1.5.15");
+    expect(
+      preview.items.find(
+        (item) => item.operation_id === "create-usermaven-client",
+      )?.preview,
     ).toContain("usermavenClient");
     expect(
       preview.items.find(
@@ -878,6 +893,80 @@ describe("generateSetupPlan with a baseline tracking plan", () => {
         operation.id.startsWith("instrument-"),
       ),
     ).toBe(false);
+  });
+
+  it("appends the Usermaven rule after an existing file without a final newline", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-gitignore-append-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    const before = "node_modules/\ndist";
+    await writeFile(join(root, ".gitignore"), before);
+    const baseline = createBaselineTrackingPlan(
+      { inspection: await inspectProject(root) },
+      options,
+    );
+
+    const plan = await generateSetupPlan(
+      { projectRoot: root, workspace, trackingPlan: baseline },
+      options,
+    );
+    const gitignore = plan.operations.find(
+      (operation) => operation.id === "ensure-usermaven-gitignore",
+    );
+
+    expect(gitignore).toMatchObject({
+      type: "edit_file",
+      path: ".gitignore",
+    });
+    const updated =
+      gitignore?.type === "edit_file"
+        ? applyPatch(before, gitignore.unified_diff)
+        : false;
+    expect(updated).toBe("node_modules/\ndist\n.usermaven/\n");
+  });
+
+  it("omits the gitignore operation when Usermaven state is already ignored", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-gitignore-existing-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    await writeFile(join(root, ".gitignore"), ".usermaven/\n");
+    const baseline = createBaselineTrackingPlan(
+      { inspection: await inspectProject(root) },
+      options,
+    );
+
+    const plan = await generateSetupPlan(
+      { projectRoot: root, workspace, trackingPlan: baseline },
+      options,
+    );
+
+    expect(
+      plan.operations.some(
+        (operation) => operation.id === "ensure-usermaven-gitignore",
+      ),
+    ).toBe(false);
+  });
+
+  it("rejects a .gitignore that exceeds the file safety limit", async () => {
+    const root = await mkdtemp(join(tmpdir(), "wizard-gitignore-large-"));
+    temporaryRoots.push(root);
+    await cp(join(fixtures, "react-vite"), root, { recursive: true });
+    await writeFile(join(root, ".gitignore"), Buffer.alloc(5_000_001, "."));
+    const baseline = createBaselineTrackingPlan(
+      { inspection: await inspectProject(root) },
+      options,
+    );
+
+    await expect(
+      generateSetupPlan(
+        {
+          projectRoot: root,
+          workspace,
+          trackingPlan: baseline,
+        },
+        options,
+      ),
+    ).rejects.toThrow("exceeds the 5 MB safety limit");
   });
 
   it("omits the wiring operation when the entry point already imports the client", async () => {
