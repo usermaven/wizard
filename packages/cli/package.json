@@ -49,7 +49,7 @@
     "@modelcontextprotocol/sdk": "1.29.0",
     "@usermaven/wizard-core": "0.14.0",
     "@usermaven/wizard-schemas": "0.14.0",
-    "zod": "4.4.3"
+    "zod": "4.6.5"
   },
   "publishConfig": {
     "access": "public",
