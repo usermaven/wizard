@@ -50,7 +50,7 @@ zero-config page-view plan) · `setup-plan` · `preview` · `approve` · `apply`
 
 Run `npx @usermaven/wizard --help` for flags. The wizard sends no telemetry.
 
-## Claude Code skill
+## Claude Code skills
 
 The package ships a ready-made skill at `skills/usermaven-setup/SKILL.md`.
 Copy it into your project to teach Claude Code the full setup flow:
@@ -60,6 +60,20 @@ mkdir -p .claude/skills/usermaven-setup
 cp node_modules/@usermaven/wizard/skills/usermaven-setup/SKILL.md \
   .claude/skills/usermaven-setup/
 ```
+
+For product questions and app workflows, install the product guide by copying
+the entire `usermaven-product-guide/` directory:
+
+```sh
+mkdir -p .claude/skills
+cp -R node_modules/@usermaven/wizard/skills/usermaven-product-guide \
+  .claude/skills/
+```
+
+Preserve the directory structure, including `SKILL.md`, `references/`, and
+`agents/`. The entry point loads supporting files from `references/`, so copying
+only `SKILL.md` leaves the guide incomplete. When installing from a repository
+checkout, use `packages/cli/skills/usermaven-product-guide` as the source instead.
 
 ## Documentation
 
